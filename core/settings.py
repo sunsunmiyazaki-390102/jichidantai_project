@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'bot',
     'ai_engine',
     'events',
+    'line_control',
 ]
 
 MIDDLEWARE = [
