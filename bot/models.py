@@ -2,7 +2,7 @@ from django.db import models
 from members.models import AiMember
 
 # --------------------------------------------------
-# 1. 既存モデル：会話ログ（そのまま保持）
+# 1. 既存モデル：会話ログ
 # --------------------------------------------------
 class MessageLog(models.Model):
     """
@@ -10,7 +10,7 @@ class MessageLog(models.Model):
     """
     ROLE_CHOICES = [
         ('user', '利用者'),
-        ('assistant', 'AI議員アバター'),
+        ('assistant', 'AIアシスタント'),
         ('system', 'システム'),
     ]
 
@@ -51,6 +51,22 @@ class Politician(models.Model):
     line_access_token = models.CharField("Access Token", max_length=255)
     slug = models.SlugField("識別パス", unique=True, help_text="URLの一部になります")
 
+    # --- ゴミ収集地区の設定 ---
+    GOMI_REGION_CHOICES = [
+        ('miyazaki_kita_a', '宮崎市：北A地区'),
+        ('miyazaki_kita_b', '宮崎市：北B地区'),
+        ('miyazaki_minami_a', '宮崎市：南A地区'),
+        ('miyazaki_minami_b', '宮崎市：南B地区'),
+        ('none', '設定なし（または他市区町村）'),
+    ]
+    gomi_region = models.CharField(
+        max_length=50,
+        choices=GOMI_REGION_CHOICES,
+        default='none',
+        verbose_name="ゴミ収集地区グループ",
+        help_text="この自治会が該当するゴミ収集地区を選択してください。"
+    )
+
     # --- AI関連の設定フィールド ---
     openai_api_key = models.CharField(
         max_length=255, 
@@ -84,16 +100,16 @@ class Politician(models.Model):
         return self.name
 
 # --------------------------------------------------
-# 3. 既存モデル改修：活動予定（マルチテナント対応）
+# 3. 既存モデル：活動予定
 # --------------------------------------------------
 class Event(models.Model):
-    """議員ごとの活動予定"""
+    """自治会ごとの活動予定"""
     politician = models.ForeignKey(
         Politician, 
         on_delete=models.CASCADE, 
         null=True, 
         blank=True,
-        verbose_name="担当議員"
+        verbose_name="担当自治会"
     )
     title = models.CharField("イベント名", max_length=200)
     date = models.DateTimeField("開催日時")
@@ -110,10 +126,9 @@ class Event(models.Model):
 # --------------------------------------------------
 class Course(models.Model):
     """AI初心者、中級者などのコース"""
-    politician = models.ForeignKey(Politician, on_delete=models.CASCADE, verbose_name="担当議員")
+    politician = models.ForeignKey(Politician, on_delete=models.CASCADE, verbose_name="担当自治会")
     title = models.CharField("コース名", max_length=100)
     description = models.TextField("コース説明", blank=True)
-    # --- 動画URLを保存するフィールドを追加 ---
     video_url = models.URLField("動画URL", max_length=500, blank=True, null=True, help_text="YouTubeなどの動画URLを入力してください")
 
     class Meta:
@@ -142,7 +157,7 @@ class CourseContent(models.Model):
 
 class UserProgress(models.Model):
     """会員（LINEユーザー）の学習進捗"""
-    politician = models.ForeignKey(Politician, on_delete=models.CASCADE, verbose_name="担当議員")
+    politician = models.ForeignKey(Politician, on_delete=models.CASCADE, verbose_name="担当自治会")
     line_user_id = models.CharField("LINE ID", max_length=100)
     current_course = models.ForeignKey(Course, on_delete=models.SET_NULL, null=True, verbose_name="受講中のコース")
     last_completed_order = models.PositiveIntegerField("完了済み順序", default=0)
@@ -151,4 +166,5 @@ class UserProgress(models.Model):
     class Meta:
         verbose_name = "受講進捗"
         verbose_name_plural = "受講進捗一覧"
-        unique_together = ('line_user_id', 'current_course')    
+        unique_together = ('line_user_id', 'current_course')
+        
