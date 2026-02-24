@@ -1,77 +1,55 @@
 from django.contrib import admin
-from .models import MessageLog
-from .models import Politician, Event, Course, CourseContent, UserProgress
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog
+
+# 自治会の編集画面の中に「案内の紐付け」を出す設定
+class CourseAssignmentInline(admin.TabularInline):
+    model = CourseAssignment
+    extra = 1
+    verbose_name = "割り当てる案内情報"
+    verbose_name_plural = "案内情報の割り当て"
+
+# 案内の編集画面の中に「メッセージ内容」を出す設定
+class CourseContentInline(admin.TabularInline):
+    model = CourseContent
+    extra = 1
+    verbose_name = "メッセージ内容（ステップ）"
+    verbose_name_plural = "メッセージ内容（ステップ）"
 
 @admin.register(Politician)
 class PoliticianAdmin(admin.ModelAdmin):
-    # 一覧画面での表示項目に「地区設定」と「アシスタントID有」を表示
-    list_display = ('name', 'slug', 'gomi_region', 'ai_model_name', 'has_api_key', 'has_assistant_id')
-    search_fields = ('name', 'slug')
-
-    # ★編集画面のグループ分け（セクション化）
+    list_display = ('name', 'slug', 'gomi_region', 'has_api_key')
+    # 自治会の編集画面に「案内の紐付け」を表示
+    inlines = [CourseAssignmentInline]
+    
     fieldsets = (
-        ('基本情報', {
-            'fields': ('name', 'slug')
-        }),
-        ('LINE連携設定', {
-            'fields': ('line_channel_secret', 'line_access_token')
-        }),
+        ('基本情報', {'fields': ('name', 'slug')}),
+        ('LINE連携設定', {'fields': ('line_channel_secret', 'line_access_token')}),
+        ('地域設定', {'fields': ('gomi_region',)}),
         ('AI（頭脳）設定', {
-            # ここに 'gomi_region' を追加しました
-            'fields': ('openai_api_key', 'ai_model_name', 'system_prompt', 'openai_assistant_id', 'gomi_region'),
-            'description': '通常のAIを使う場合はプロンプトを、PDFなどの独自知識（RAG）を使う場合はアシスタントIDを入力してください。'
+            'fields': ('openai_api_key', 'ai_model_name', 'system_prompt', 'openai_assistant_id'),
         }),
     )
 
     def has_api_key(self, obj):
         return bool(obj.openai_api_key)
-    has_api_key.short_description = "APIキー設定済"
     has_api_key.boolean = True
+    has_api_key.short_description = "APIキー設定済"
 
-    def has_assistant_id(self, obj):
-        return bool(obj.openai_assistant_id)
-    has_assistant_id.short_description = "アシスタント有"
-    has_assistant_id.boolean = True
+@admin.register(Course)
+class CourseAdmin(admin.ModelAdmin):
+    list_display = ('title',)
+    # 案内の編集画面に「メッセージ内容」を表示
+    inlines = [CourseContentInline]
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
     list_display = ('title', 'politician', 'date')
-    list_filter = ('politician', 'date')
-    search_fields = ('title',)
-
-@admin.register(Course)
-class CourseAdmin(admin.ModelAdmin):
-    list_display = ('title', 'politician', 'video_url_status')
     list_filter = ('politician',)
-    search_fields = ('title',)
-
-    def video_url_status(self, obj):
-        return "設定済" if obj.video_url else "未設定"
-    video_url_status.short_description = "動画登録"
-
-@admin.register(CourseContent)
-class CourseContentAdmin(admin.ModelAdmin):
-    list_display = ('course', 'order', 'title', 'video_url')
-    list_editable = ('order',)
-    list_filter = ('course__politician', 'course')
-    search_fields = ('title', 'message_text')
-    ordering = ('course', 'order')
 
 @admin.register(UserProgress)
 class UserProgressAdmin(admin.ModelAdmin):
-    list_display = ('line_user_id', 'politician', 'current_course', 'last_completed_order', 'updated_at')
-    list_filter = ('politician', 'current_course')
-    search_fields = ('line_user_id',)
-    readonly_fields = ('updated_at',)
+    list_display = ('line_user_id', 'politician', 'current_course', 'updated_at')
 
 @admin.register(MessageLog)
 class MessageLogAdmin(admin.ModelAdmin):
-    list_display = ('member', 'role', 'text_summary', 'created_at', 'is_escalated')
-    list_filter = ('role', 'is_escalated', 'created_at')
-    search_fields = ('text', 'member__real_name', 'member__display_name')
-    readonly_fields = ('created_at',) 
-
-    def text_summary(self, obj):
-        return obj.text[:30] + "..." if len(obj.text) > 30 else obj.text
-    text_summary.short_description = "内容（抜粋）"
-    
+    list_display = ('member', 'role', 'created_at')
