@@ -4,11 +4,11 @@ from .models import Politician, Event, Course, CourseContent, UserProgress
 
 @admin.register(Politician)
 class PoliticianAdmin(admin.ModelAdmin):
-    # 一覧画面での表示項目に「アシスタントID有」を追加
-    list_display = ('name', 'slug', 'ai_model_name', 'has_api_key', 'has_assistant_id')
+    # 一覧画面での表示項目に「地区設定」と「アシスタントID有」を表示
+    list_display = ('name', 'slug', 'gomi_region', 'ai_model_name', 'has_api_key', 'has_assistant_id')
     search_fields = ('name', 'slug')
 
-    # ★超便利機能：編集画面を綺麗にグループ分け（セクション化）します
+    # ★編集画面のグループ分け（セクション化）
     fieldsets = (
         ('基本情報', {
             'fields': ('name', 'slug')
@@ -17,7 +17,8 @@ class PoliticianAdmin(admin.ModelAdmin):
             'fields': ('line_channel_secret', 'line_access_token')
         }),
         ('AI（頭脳）設定', {
-            'fields': ('openai_api_key', 'ai_model_name', 'system_prompt', 'openai_assistant_id'),
+            # ここに 'gomi_region' を追加しました
+            'fields': ('openai_api_key', 'ai_model_name', 'system_prompt', 'openai_assistant_id', 'gomi_region'),
             'description': '通常のAIを使う場合はプロンプトを、PDFなどの独自知識（RAG）を使う場合はアシスタントIDを入力してください。'
         }),
     )
@@ -25,9 +26,8 @@ class PoliticianAdmin(admin.ModelAdmin):
     def has_api_key(self, obj):
         return bool(obj.openai_api_key)
     has_api_key.short_description = "APIキー設定済"
-    has_api_key.boolean = True  # ✓や✕のアイコンで表示されます
+    has_api_key.boolean = True
 
-    # アシスタントIDが設定されているか判定するメソッドを追加
     def has_assistant_id(self, obj):
         return bool(obj.openai_assistant_id)
     has_assistant_id.short_description = "アシスタント有"
@@ -51,18 +51,14 @@ class CourseAdmin(admin.ModelAdmin):
 
 @admin.register(CourseContent)
 class CourseContentAdmin(admin.ModelAdmin):
-    # 教材タイトルだけでなく、コース名や順番も表示
     list_display = ('course', 'order', 'title', 'video_url')
-    # ★超便利機能：一覧画面からそのまま「配信順序(order)」の数字を書き換えられるようにします
     list_editable = ('order',)
-    # 政治家ごと、コースごとに絞り込み可能に
     list_filter = ('course__politician', 'course')
     search_fields = ('title', 'message_text')
     ordering = ('course', 'order')
 
 @admin.register(UserProgress)
 class UserProgressAdmin(admin.ModelAdmin):
-    # 最終更新日時（いつ学習を進めたか）を表示に追加
     list_display = ('line_user_id', 'politician', 'current_course', 'last_completed_order', 'updated_at')
     list_filter = ('politician', 'current_course')
     search_fields = ('line_user_id',)
