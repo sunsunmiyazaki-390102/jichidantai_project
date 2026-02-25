@@ -87,7 +87,19 @@ def callback(request, politician_slug):
                         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="情報が見つかりません。"))
                         return
                     
-                    progress, _ = UserProgress.objects.get_or_create(politician=politician, line_user_id=line_user_id, current_course=course)
+                    # 💡 【修正点】教材開始の時は0からリセットし、重複エラーも回避する
+                    if prefix == "教材開始":
+                        progress, _ = UserProgress.objects.update_or_create(
+                            line_user_id=line_user_id,
+                            current_course=course,
+                            defaults={'politician': politician, 'last_completed_order': 0}
+                        )
+                    else:
+                        progress, _ = UserProgress.objects.get_or_create(
+                            line_user_id=line_user_id,
+                            current_course=course,
+                            defaults={'politician': politician, 'last_completed_order': 0}
+                        )
                     
                     if prefix == "教材終了":
                         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ご確認ありがとうございました。"))
@@ -100,17 +112,36 @@ def callback(request, politician_slug):
                         progress.save()
                         
                         msg = f"【{content.title}】\n\n{content.message_text}"
-                        buttons = [{"type": "button", "style": "primary", "action": {"type": "message", "label": "次へ", "text": f"教材次へ:{course.title}"}}]
                         
-                        # 最後なら「終了」ボタン
+                        # 💡 【修正点】ボタンのリストを作成（動画URLがあれば追加）
+                        buttons = []
+                        
+                        if content.video_url:
+                            buttons.append({
+                                "type": "button",
+                                "style": "primary",
+                                "color": "#E52020", # YouTubeっぽい赤色で目立たせる
+                                "action": {
+                                    "type": "uri",
+                                    "label": "🎥 動画を見る",
+                                    "uri": content.video_url
+                                }
+                            })
+
+                        # 次へ or 完了ボタンを下に追加
                         if not CourseContent.objects.filter(course=course, order__gt=content.order).exists():
-                            buttons = [{"type": "button", "style": "secondary", "action": {"type": "message", "label": "完了", "text": f"教材終了:{course.title}"}}]
+                            buttons.append({"type": "button", "style": "secondary", "action": {"type": "message", "label": "完了", "text": f"教材終了:{course.title}"}})
+                        else:
+                            buttons.append({"type": "button", "style": "primary", "action": {"type": "message", "label": "次へ", "text": f"教材次へ:{course.title}"}})
                         
                         flex = FlexSendMessage(alt_text=content.title, contents={
-                            "type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": msg, "wrap": True}]},
-                            "footer": {"type": "box", "layout": "vertical", "contents": buttons}
+                            "type": "bubble", 
+                            "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": msg, "wrap": True}]},
+                            "footer": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": buttons}
                         })
                         line_bot_api.reply_message(event.reply_token, flex)
+                    else:
+                        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="すべての内容が完了しています。"))
                     return
 
             # 3. 案内一覧
@@ -124,7 +155,7 @@ def callback(request, politician_slug):
                 for a in assignments:
                     bubbles.append({
                         "type": "bubble",
-                        "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": a.course.title, "weight": "bold", "size": "xl"}]},
+                        "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": a.course.title, "weight": "bold", "size": "xl", "wrap": True}]},
                         "footer": {"type": "box", "layout": "vertical", "contents": [{"type": "button", "style": "primary", "action": {"type": "message", "label": "開く", "text": f"教材開始:{a.course.title}"}}]}
                     })
                 line_bot_api.reply_message(event.reply_token, FlexSendMessage(alt_text="一覧", contents={"type": "carousel", "contents": bubbles}))

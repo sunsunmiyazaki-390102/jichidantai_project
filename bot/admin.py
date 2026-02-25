@@ -9,7 +9,7 @@ class CourseAssignmentInline(admin.TabularInline):
     verbose_name_plural = "案内情報の割り当て"
 
 # 案内の編集画面の中に「メッセージ内容」を出す設定
-class CourseContentInline(admin.TabularInline):
+class CourseContentInline(admin.StackedInline):
     model = CourseContent
     extra = 1
     verbose_name = "メッセージ内容（ステップ）"
