@@ -137,75 +137,176 @@ def callback(request, politician_slug):
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=msg))
                 return
 
-            if ":" in user_text:
-                prefix, title = user_text.split(":", 1)
-                if prefix in ["教材開始", "教材進捗", "教材次へ", "教材終了"]:
-                    course = Course.objects.filter(title=title).first()
-                    if not course:
-                        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="情報が見つかりません。"))
-                        return
-                    
-                    if prefix == "教材開始":
-                        progress, _ = UserProgress.objects.update_or_create(
-                            line_user_id=line_user_id,
-                            current_course=course,
-                            defaults={'politician': politician, 'last_completed_order': 0}
-                        )
-                    else:
-                        progress, _ = UserProgress.objects.get_or_create(
-                            line_user_id=line_user_id,
-                            current_course=course,
-                            defaults={'politician': politician, 'last_completed_order': 0}
-                        )
-                    
-                    if prefix == "教材終了":
-                        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ご確認ありがとうございました。"))
-                        return
+            # (前略) お問い合わせやゴミ出しカレンダーの処理...
 
-                    content = CourseContent.objects.filter(course=course, order__gt=progress.last_completed_order).first()
-                    if content:
-                        progress.last_completed_order = content.order
-                        progress.save()
-                        
-                        msg = f"【{content.title}】\n\n{content.message_text}"
-                        buttons = []
-                        
-                        if content.video_url:
-                            buttons.append({
-                                "type": "button", "style": "primary", "color": "#E52020",
-                                "action": {"type": "uri", "label": "🎥 動画を見る", "uri": content.video_url}
-                            })
-
-                        if not CourseContent.objects.filter(course=course, order__gt=content.order).exists():
-                            buttons.append({"type": "button", "style": "secondary", "action": {"type": "message", "label": "完了", "text": f"教材終了:{course.title}"}})
-                        else:
-                            buttons.append({"type": "button", "style": "primary", "action": {"type": "message", "label": "次へ", "text": f"教材次へ:{course.title}"}})
-                        
-                        flex = FlexSendMessage(alt_text=content.title, contents={
-                            "type": "bubble", 
-                            "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": msg, "wrap": True}]},
-                            "footer": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": buttons}
-                        })
-                        line_bot_api.reply_message(event.reply_token, flex)
-                    else:
-                        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="すべての内容が完了しています。"))
-                    return
-
+            # ▼ 💡【変更】教材一覧の表示（カルーセル）
             if user_text in ["案内一覧", "教材一覧", "ルール確認"]:
-                assignments = CourseAssignment.objects.filter(politician=politician)
-                if not assignments:
-                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="準備中"))
+                # CourseAssignment（自治会に紐づいた案内）を取得
+                assignments = CourseAssignment.objects.filter(politician=politician).order_by('id')
+                if not assignments.exists():
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="現在、案内（教材）は準備中です。"))
                     return
                 
-                bubbles = []
+                contents = []
                 for a in assignments:
-                    bubbles.append({
+                    course = a.course
+                    bubble = {
                         "type": "bubble",
-                        "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": a.course.title, "weight": "bold", "size": "xl", "wrap": True}]},
-                        "footer": {"type": "box", "layout": "vertical", "contents": [{"type": "button", "style": "primary", "action": {"type": "message", "label": "開く", "text": f"教材開始:{a.course.title}"}}]}
-                    })
-                line_bot_api.reply_message(event.reply_token, FlexSendMessage(alt_text="一覧", contents={"type": "carousel", "contents": bubbles}))
+                        "body": {
+                            "type": "box", "layout": "vertical",
+                            "contents": [
+                                {"type": "text", "text": "自治会のご案内", "color": "#1DB446", "size": "sm", "weight": "bold"},
+                                {"type": "text", "text": course.title, "weight": "bold", "size": "xl", "margin": "md", "wrap": True},
+                            ]
+                        },
+                        "footer": {
+                            "type": "box", "layout": "vertical",
+                            "contents": [
+                                {
+                                    "type": "button", "style": "primary", "color": "#1DB446",
+                                    "action": {"type": "message", "label": "確認を始める", "text": f"教材開始:{course.title}"}
+                                }
+                            ]
+                        }
+                    }
+                    contents.append(bubble)
+                flex_message = FlexSendMessage(alt_text="案内一覧", contents={"type": "carousel", "contents": contents})
+                line_bot_api.reply_message(event.reply_token, flex_message)
                 return
+
+            # ▼ 💡【変更】学習（案内）のサイクル処理
+            if user_text.startswith("教材開始:") or user_text.startswith("教材進捗:") or user_text.startswith("教材次へ:") or user_text.startswith("教材終了:") or user_text.startswith("教材復習:"):
+                parts = user_text.split(":")
+                action = parts[0]
+                title = parts[1]
+                
+                course = Course.objects.filter(title=title).first()
+                if not course:
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="情報が見つかりませんでした。"))
+                    return
+
+                # 進捗の取得・作成（マルチテナント対応済）
+                progress, _ = UserProgress.objects.get_or_create(
+                    line_user_id=line_user_id,
+                    current_course=course,
+                    defaults={'politician': politician, 'last_completed_order': 0}
+                )
+
+                # --- 終了処理 ---
+                if action == "教材終了":
+                    reply_text = f"☕ ご確認お疲れ様でした！\n『{course.title}』の続きは、メニューからいつでも再開できます。"
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+                    return
+
+                # --- 復習（見返し）処理 ---
+                if action == "教材復習":
+                    completed_contents = CourseContent.objects.filter(
+                        course=course,
+                        order__lte=progress.last_completed_order
+                    ).order_by('order')
+
+                    if not completed_contents.exists():
+                        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="まだ見返せる案内がありません。まずは確認を進めましょう！"))
+                        return
+                    
+                    reply_text = f"📚 『{course.title}』の確認リストです\n\n"
+                    for content in completed_contents:
+                        reply_text += f"■ {content.title}\n"
+                        if content.video_url:
+                            reply_text += f"🎬 {content.video_url}\n"
+                        reply_text += "\n"
+                    
+                    reply_text += "何度でも見返して確認できます✨"
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+                    return
+
+                # --- 進捗の保存処理 ---
+                if action == "教材進捗":
+                    completed_order = int(parts[2])
+                    if progress.last_completed_order < completed_order:
+                        progress.last_completed_order = completed_order
+                        progress.save()
+                    
+                    next_content = CourseContent.objects.filter(
+                        course=course,
+                        order__gt=progress.last_completed_order
+                    ).order_by('order').first()
+
+                    if next_content:
+                        bubble = {
+                            "type": "bubble",
+                            "body": {
+                                "type": "box", "layout": "vertical",
+                                "contents": [
+                                    {"type": "text", "text": "✅ 記録を保存しました", "weight": "bold", "color": "#1DB446", "size": "md"},
+                                    {"type": "text", "text": "続けて次の案内に進みますか？", "wrap": True, "size": "sm", "margin": "md"}
+                                ]
+                            },
+                            "footer": {
+                                "type": "box", "layout": "vertical", "spacing": "sm",
+                                "contents": [
+                                    {"type": "button", "style": "primary", "color": "#1DB446", "action": {"type": "message", "label": "次に進む", "text": f"教材次へ:{course.title}"}},
+                                    {"type": "button", "style": "secondary", "action": {"type": "message", "label": "一旦終了する", "text": f"教材終了:{course.title}"}}
+                                ]
+                            }
+                        }
+                        line_bot_api.reply_message(event.reply_token, FlexSendMessage(alt_text="次に進みますか？", contents=bubble))
+                    else:
+                        reply_text = f"🎉 おめでとうございます！\n『{course.title}』の全ご案内が完了しました！"
+                        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+                    return
+
+                # --- 開始・次へ の処理 ---
+                if action == "教材開始" or action == "教材次へ":
+                    next_content = CourseContent.objects.filter(
+                        course=course,
+                        order__gt=progress.last_completed_order
+                    ).order_by('order').first()
+
+                    if next_content:
+                        # テキストメッセージの作成
+                        msg_text = f"📖 【{next_content.title}】\n\n{next_content.message_text}"
+                        if next_content.video_url:
+                            msg_text += f"\n\n🎬 参考動画はこちら:\n{next_content.video_url}"
+                        
+                        text_msg = TextSendMessage(text=msg_text)
+                        
+                        # ボタン（FlexMessage）の作成
+                        bubble = {
+                            "type": "bubble",
+                            "body": {
+                                "type": "box", "layout": "vertical",
+                                "contents": [{"type": "text", "text": "確認が終わったらボタンを押して記録しましょう👇", "wrap": True, "size": "sm", "color": "#666666"}]
+                            },
+                            "footer": {
+                                "type": "box", "layout": "horizontal", "spacing": "sm",
+                                "contents": [
+                                    {"type": "button", "style": "primary", "color": "#1DB446", "action": {"type": "message", "label": "確認完了", "text": f"教材進捗:{course.title}:{next_content.order}"}},
+                                    {"type": "button", "style": "secondary", "action": {"type": "message", "label": "スキップ", "text": f"教材進捗:{course.title}:{next_content.order}"}}
+                                ]
+                            }
+                        }
+                        flex_msg = FlexSendMessage(alt_text="確認完了ボタン", contents=bubble)
+                        line_bot_api.reply_message(event.reply_token, [text_msg, flex_msg])
+                    else:
+                        bubble = {
+                            "type": "bubble",
+                            "body": {
+                                "type": "box", "layout": "vertical",
+                                "contents": [
+                                    {"type": "text", "text": "🎉 すべて確認済みです", "weight": "bold", "color": "#1DB446", "size": "md"},
+                                    {"type": "text", "text": f"すでに『{course.title}』を最後まで確認済みです！\n\n復習リストから過去の案内を再確認できます。", "wrap": True, "size": "sm", "margin": "md"}
+                                ]
+                            },
+                            "footer": {
+                                "type": "box", "layout": "vertical", "spacing": "sm",
+                                "contents": [
+                                    {"type": "button", "style": "primary", "color": "#1DB446", "action": {"type": "message", "label": "復習リストを見る", "text": f"教材復習:{course.title}"}}
+                                ]
+                            }
+                        }
+                        line_bot_api.reply_message(event.reply_token, FlexSendMessage(alt_text="全確認完了", contents=bubble))
+                    return
 
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=get_ai_response(user_text)))
 
