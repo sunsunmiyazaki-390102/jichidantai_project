@@ -129,6 +129,14 @@ def callback(request, politician_slug):
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=msg))
                 return
 
+            # 💡【今回ここを新規追加します】
+            if user_text == "お問い合わせ":
+                # ↓ご自身のメールアドレスに書き換えてください
+                contact_email = "winwinmiyazaki@miyazaki-catv.ne.jp" 
+                msg = f"ご不明な点やご相談は、以下のメールアドレスまでお気軽にお問い合わせください。\n\n✉️ {contact_email}\n\n※送信の際は、お名前と地区名を添えていただけますとスムーズです。"
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=msg))
+                return
+
             if ":" in user_text:
                 prefix, title = user_text.split(":", 1)
                 if prefix in ["教材開始", "教材進捗", "教材次へ", "教材終了"]:
