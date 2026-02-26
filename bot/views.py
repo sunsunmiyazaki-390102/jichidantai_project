@@ -16,10 +16,10 @@ from members.models import AiMember
 
 # ★Excelに入力した「市町村」と「地区」の文字と完全に一致させる必要があります
 REGION_MAP = {
-    'miyazaki_kita_a': ('宮崎市', '北A'),
-    'miyazaki_kita_b': ('宮崎市', '北B'),
-    'miyazaki_minami_a': ('宮崎市', '南A'),
-    'miyazaki_minami_b': ('宮崎市', '南B'),
+    'miyazaki_kita_a': ('宮崎市', '北A地区'),
+    'miyazaki_kita_b': ('宮崎市', '北B地区'),
+    'miyazaki_minami_a': ('宮崎市', '南A地区'),
+    'miyazaki_minami_b': ('宮崎市', '南B地区'),
 }
 
 @csrf_exempt
