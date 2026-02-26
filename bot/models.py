@@ -90,3 +90,21 @@ class MessageLog(models.Model):
     text = models.TextField()
     is_escalated = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+
+class GarbageCalendar(models.Model):
+    municipality = models.CharField(max_length=50, verbose_name="市町村")
+    district = models.CharField(max_length=50, verbose_name="地区")
+    collection_date = models.DateField(verbose_name="収集日")
+    garbage_type = models.CharField(max_length=100, verbose_name="ゴミ種別")
+    notes = models.TextField(blank=True, null=True, verbose_name="注意事項等")
+    other = models.TextField(blank=True, null=True, verbose_name="その他")
+
+    class Meta:
+        verbose_name = "ゴミ収集カレンダー"
+        verbose_name_plural = "ゴミ収集カレンダー"
+        # 同じ地区の同じ日に、同じゴミ種別が「重複登録」されるのを防ぐ
+        unique_together = ('municipality', 'district', 'collection_date', 'garbage_type')
+        ordering = ['collection_date']
+
+    def __str__(self):
+        return f"【{self.municipality} {self.district}】{self.collection_date.strftime('%Y/%m/%d')} : {self.garbage_type}"

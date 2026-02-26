@@ -5,19 +5,21 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, FlexSendMessage, FollowEvent
 from django.utils import timezone
+from datetime import timedelta
 from openai import OpenAI
 import time
 import re
 import traceback
 
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, GarbageCalendar
 from members.models import AiMember
 
-GOMI_SCHEDULE_DATA = {
-    'miyazaki_kita_a': "月・木：可燃、金：プラ、第2・4水：缶びん、第1・3水：ペット、第1水：不燃・金属、第2・4火：古紙・衣類、第1〜4火：蛍光管・電池類",
-    'miyazaki_kita_b': "月・木：可燃、金：プラ、第1・3火：缶びん、第2・4火：ペット、第2水：不燃・金属、第4水：古紙・衣類、第1〜4火：蛍光管・電池類",
-    'miyazaki_minami_a': "火・金：可燃、水：プラ、第2水：缶びん、第1・3木：ペット、第3月：不燃・金属、第1水：古紙・衣類、第1〜4月：蛍光管・電池類",
-    'miyazaki_minami_b': "火・金：可燃、水：プラ、第4水：缶びん、第2・4木：ペット、第4月：不燃・金属、第1火：古紙・衣類、第1〜4火：蛍光管・電池類",
+# ★Excelに入力した「市町村」と「地区」の文字と完全に一致させる必要があります
+REGION_MAP = {
+    'miyazaki_kita_a': ('宮崎市', '北A'),
+    'miyazaki_kita_b': ('宮崎市', '北B'),
+    'miyazaki_minami_a': ('宮崎市', '南A'),
+    'miyazaki_minami_b': ('宮崎市', '南B'),
 }
 
 @csrf_exempt
@@ -29,14 +31,56 @@ def callback(request, politician_slug):
     signature = request.META.get('HTTP_X_LINE_SIGNATURE', '')
     body = request.body.decode('utf-8')
 
+    # 💡【新規追加】DBから直近30日のカレンダーを検索してテキストにする関数
+    def get_db_schedule():
+        now_jst = timezone.localtime(timezone.now())
+        today = now_jst.date()
+        muni_dist = REGION_MAP.get(politician.gomi_region)
+        
+        if not muni_dist:
+            return "未設定", "未設定", "※地区情報が設定されていません。"
+        
+        muni_name, dist_name = muni_dist
+        schedules = GarbageCalendar.objects.filter(
+            municipality=muni_name,
+            district=dist_name,
+            collection_date__gte=today,
+            collection_date__lte=today + timedelta(days=30)
+        ).order_by('collection_date')
+        
+        if schedules.exists():
+            weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+            lines = []
+            for s in schedules:
+                w = weekdays[s.collection_date.weekday()]
+                line = f"・{s.collection_date.strftime('%m/%d')}({w}): {s.garbage_type}"
+                if s.notes:
+                    line += f" ※{s.notes}"
+                lines.append(line)
+            return muni_name, dist_name, "\n".join(lines)
+        return muni_name, dist_name, "※直近30日の収集予定は登録されていません。"
+
     def get_ai_response(user_text):
         if not politician.openai_api_key: return "AI設定未完了"
         client = OpenAI(api_key=politician.openai_api_key.strip())
         
-        region_name = politician.get_gomi_region_display()
-        schedule = GOMI_SCHEDULE_DATA.get(politician.gomi_region, "市役所確認")
+        now_jst = timezone.localtime(timezone.now())
+        today = now_jst.date()
+        weekday_str = ["月", "火", "水", "木", "金", "土", "日"][now_jst.weekday()]
         
-        system_prompt = f"{politician.system_prompt}\n\n【地区情報】{region_name}\n【スケジュール】{schedule}\n今日の日付:{timezone.now().strftime('%Y-%m-%d')}"
+        muni_name, dist_name, schedule_text = get_db_schedule()
+        
+        system_prompt = (
+            f"{politician.system_prompt}\n\n"
+            f"あなたは自治体の優秀な案内アシスタントです。以下の【直近の収集カレンダー】の事実のみに基づいて回答してください。\n"
+            f"絶対に自分で計算や推測をせず、カレンダーに記載されている日付とゴミの種類だけを答えてください。\n"
+            f"カレンダーにない日付を聞かれた場合は「データがありません」と答えてください。\n\n"
+            f"【現在の日時】\n"
+            f"今日: {today.strftime('%Y年%m月%d日')} ({weekday_str}曜日)\n\n"
+            f"【地区情報】{muni_name} {dist_name}\n"
+            f"【直近の収集カレンダー（今日から30日間）】\n"
+            f"{schedule_text}"
+        )
         
         try:
             response = client.chat.completions.create(
@@ -78,7 +122,14 @@ def callback(request, politician_slug):
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="登録完了！メニューから情報を選んでください。"))
                 return
 
-            # 2. 教材・案内アクション (「:」を含むものを最優先で判定)
+            # 💡【新規追加】リッチメニュー「ゴミ出しカレンダー」の処理
+            if user_text == "ゴミ出しカレンダー":
+                muni_name, dist_name, schedule_text = get_db_schedule()
+                msg = f"📅 【{muni_name} {dist_name}】のゴミ出しカレンダー（直近30日）\n\n{schedule_text}\n\n※「明日のゴミは？」など、分からないことはそのまま私（AI）に聞いてくださいね！"
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=msg))
+                return
+
+            # 2. 教材・案内アクション
             if ":" in user_text:
                 prefix, title = user_text.split(":", 1)
                 if prefix in ["教材開始", "教材進捗", "教材次へ", "教材終了"]:
@@ -87,7 +138,6 @@ def callback(request, politician_slug):
                         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="情報が見つかりません。"))
                         return
                     
-                    # 💡 【修正点】教材開始の時は0からリセットし、重複エラーも回避する
                     if prefix == "教材開始":
                         progress, _ = UserProgress.objects.update_or_create(
                             line_user_id=line_user_id,
@@ -105,30 +155,20 @@ def callback(request, politician_slug):
                         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ご確認ありがとうございました。"))
                         return
 
-                    # 次のコンテンツを取得
                     content = CourseContent.objects.filter(course=course, order__gt=progress.last_completed_order).first()
                     if content:
                         progress.last_completed_order = content.order
                         progress.save()
                         
                         msg = f"【{content.title}】\n\n{content.message_text}"
-                        
-                        # 💡 【修正点】ボタンのリストを作成（動画URLがあれば追加）
                         buttons = []
                         
                         if content.video_url:
                             buttons.append({
-                                "type": "button",
-                                "style": "primary",
-                                "color": "#E52020", # YouTubeっぽい赤色で目立たせる
-                                "action": {
-                                    "type": "uri",
-                                    "label": "🎥 動画を見る",
-                                    "uri": content.video_url
-                                }
+                                "type": "button", "style": "primary", "color": "#E52020",
+                                "action": {"type": "uri", "label": "🎥 動画を見る", "uri": content.video_url}
                             })
 
-                        # 次へ or 完了ボタンを下に追加
                         if not CourseContent.objects.filter(course=course, order__gt=content.order).exists():
                             buttons.append({"type": "button", "style": "secondary", "action": {"type": "message", "label": "完了", "text": f"教材終了:{course.title}"}})
                         else:

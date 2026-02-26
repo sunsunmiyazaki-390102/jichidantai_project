@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'ai_engine',
     'events',
     'line_control',
+    'import_export',
 ]
 
 MIDDLEWARE = [

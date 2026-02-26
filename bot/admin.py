@@ -1,5 +1,10 @@
 from django.contrib import admin
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog
+from import_export import resources, fields
+from import_export.admin import ImportExportModelAdmin
+from import_export.widgets import DateWidget
+
+# 古いGarbageScheduleは削除し、GarbageCalendarを含めてインポートします
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar
 
 # 自治会の編集画面の中に「案内の紐付け」を出す設定
 class CourseAssignmentInline(admin.TabularInline):
@@ -53,3 +58,28 @@ class UserProgressAdmin(admin.ModelAdmin):
 @admin.register(MessageLog)
 class MessageLogAdmin(admin.ModelAdmin):
     list_display = ('member', 'role', 'created_at')
+
+# === ここから GarbageCalendar 用のインポート設定 ===
+
+# 1. Excel(CSV)の列と、データベースの項目を紐付ける「翻訳辞書」
+class GarbageCalendarResource(resources.ModelResource):
+    collection_date = fields.Field(attribute='collection_date', column_name='日付', widget=DateWidget(format='%Y/%m/%d'))
+    municipality = fields.Field(attribute='municipality', column_name='市町村')
+    district = fields.Field(attribute='district', column_name='地区')
+    garbage_type = fields.Field(attribute='garbage_type', column_name='ごみ種別')
+    other = fields.Field(attribute='other', column_name='その他')
+
+    class Meta:
+        model = GarbageCalendar
+        # 重複して取り込まないための基準キー（この4つが同じなら「上書き」扱いにする）
+        import_id_fields = ('municipality', 'district', 'collection_date', 'garbage_type')
+        skip_unchanged = True
+
+# 2. 管理画面にインポート機能を合体させる
+@admin.register(GarbageCalendar)
+class GarbageCalendarAdmin(ImportExportModelAdmin):
+    resource_class = GarbageCalendarResource
+    list_display = ('collection_date', 'municipality', 'district', 'garbage_type')
+    list_filter = ('municipality', 'district')
+    search_fields = ('garbage_type', 'notes')
+    date_hierarchy = 'collection_date'
