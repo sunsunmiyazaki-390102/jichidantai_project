@@ -31,7 +31,6 @@ def callback(request, politician_slug):
     signature = request.META.get('HTTP_X_LINE_SIGNATURE', '')
     body = request.body.decode('utf-8')
 
-    # 💡【新規追加】DBから直近30日のカレンダーを検索してテキストにする関数
     def get_db_schedule():
         now_jst = timezone.localtime(timezone.now())
         today = now_jst.date()
@@ -70,13 +69,16 @@ def callback(request, politician_slug):
         
         muni_name, dist_name, schedule_text = get_db_schedule()
         
+        # 💡【修正】Windows特有の文字化けエラーを防ぐため、年月日の作り方を安全な形式に変更しました
+        today_str = f"{today.year}年{today.month:02d}月{today.day:02d}日"
+        
         system_prompt = (
             f"{politician.system_prompt}\n\n"
             f"あなたは自治体の優秀な案内アシスタントです。以下の【直近の収集カレンダー】の事実のみに基づいて回答してください。\n"
             f"絶対に自分で計算や推測をせず、カレンダーに記載されている日付とゴミの種類だけを答えてください。\n"
             f"カレンダーにない日付を聞かれた場合は「データがありません」と答えてください。\n\n"
             f"【現在の日時】\n"
-            f"今日: {today.strftime('%Y年%m月%d日')} ({weekday_str}曜日)\n\n"
+            f"今日: {today_str} ({weekday_str}曜日)\n\n"
             f"【地区情報】{muni_name} {dist_name}\n"
             f"【直近の収集カレンダー（今日から30日間）】\n"
             f"{schedule_text}"
@@ -104,7 +106,6 @@ def callback(request, politician_slug):
             line_user_id = event.source.user_id
             member, _ = AiMember.objects.get_or_create(line_user_id=line_user_id)
 
-            # 1. 登録フロー
             if member.registration_step < 3:
                 if member.registration_step == 0:
                     member.registration_step = 1
@@ -122,14 +123,12 @@ def callback(request, politician_slug):
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="登録完了！メニューから情報を選んでください。"))
                 return
 
-            # 💡【新規追加】リッチメニュー「ゴミ出しカレンダー」の処理
             if user_text == "ゴミ出しカレンダー":
                 muni_name, dist_name, schedule_text = get_db_schedule()
                 msg = f"📅 【{muni_name} {dist_name}】のゴミ出しカレンダー（直近30日）\n\n{schedule_text}\n\n※「明日のゴミは？」など、分からないことはそのまま私（AI）に聞いてくださいね！"
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=msg))
                 return
 
-            # 2. 教材・案内アクション
             if ":" in user_text:
                 prefix, title = user_text.split(":", 1)
                 if prefix in ["教材開始", "教材進捗", "教材次へ", "教材終了"]:
@@ -184,7 +183,6 @@ def callback(request, politician_slug):
                         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="すべての内容が完了しています。"))
                     return
 
-            # 3. 案内一覧
             if user_text in ["案内一覧", "教材一覧", "ルール確認"]:
                 assignments = CourseAssignment.objects.filter(politician=politician)
                 if not assignments:
@@ -201,7 +199,6 @@ def callback(request, politician_slug):
                 line_bot_api.reply_message(event.reply_token, FlexSendMessage(alt_text="一覧", contents={"type": "carousel", "contents": bubbles}))
                 return
 
-            # 4. AI応答
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=get_ai_response(user_text)))
 
         except Exception as e:
