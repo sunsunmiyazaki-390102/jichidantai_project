@@ -31,7 +31,17 @@ def callback(request, politician_slug):
     signature = request.META.get('HTTP_X_LINE_SIGNATURE', '')
     body = request.body.decode('utf-8')
 
-    def get_db_schedule():
+
+    # ゴミの種類に応じて色を自動判定する関数
+    def get_garbage_color(garbage_type):
+        if "可燃" in garbage_type or "燃える" in garbage_type: return "#FF3B30" # 赤
+        if "プラ" in garbage_type: return "#007AFF" # 青
+        if "資源" in garbage_type or "ペット" in garbage_type or "ダンボール" in garbage_type: return "#34C759" # 緑
+        if "不燃" in garbage_type or "燃えない" in garbage_type or "金属" in garbage_type: return "#FF9500" # オレンジ
+        return "#8E8E93" # グレー（その他）
+
+    # 💡【AI用】裏でAIに渡すためのテキストカレンダー
+    def get_db_schedule_text():
         now_jst = timezone.localtime(timezone.now())
         today = now_jst.date()
         muni_dist = REGION_MAP.get(politician.gomi_region)
@@ -41,10 +51,8 @@ def callback(request, politician_slug):
         
         muni_name, dist_name = muni_dist
         schedules = GarbageCalendar.objects.filter(
-            municipality=muni_name,
-            district=dist_name,
-            collection_date__gte=today,
-            collection_date__lte=today + timedelta(days=30)
+            municipality=muni_name, district=dist_name,
+            collection_date__gte=today, collection_date__lte=today + timedelta(days=30)
         ).order_by('collection_date')
         
         if schedules.exists():
@@ -53,11 +61,75 @@ def callback(request, politician_slug):
             for s in schedules:
                 w = weekdays[s.collection_date.weekday()]
                 line = f"・{s.collection_date.strftime('%m/%d')}({w}): {s.garbage_type}"
-                if s.notes:
-                    line += f" ※{s.notes}"
+                if s.notes: line += f" ※{s.notes}"
                 lines.append(line)
             return muni_name, dist_name, "\n".join(lines)
         return muni_name, dist_name, "※直近30日の収集予定は登録されていません。"
+
+    # 💡【人間用】LINE画面に表示する美しいビジュアルカレンダー
+    def get_flex_schedule():
+        now_jst = timezone.localtime(timezone.now())
+        today = now_jst.date()
+        muni_dist = REGION_MAP.get(politician.gomi_region)
+        
+        if not muni_dist:
+            return TextSendMessage(text="※地区情報が設定されていません。")
+        
+        muni_name, dist_name = muni_dist
+        schedules = GarbageCalendar.objects.filter(
+            municipality=muni_name, district=dist_name,
+            collection_date__gte=today, collection_date__lte=today + timedelta(days=30)
+        ).order_by('collection_date')
+
+        if not schedules.exists():
+            return TextSendMessage(text=f"【{muni_name} {dist_name}】\n直近30日の収集予定は登録されていません。")
+
+        weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+        contents = []
+        
+        for s in schedules:
+            w = weekdays[s.collection_date.weekday()]
+            # 日付（例：2/25(水)）
+            date_str = f"{s.collection_date.month}/{s.collection_date.day}({w})"
+            color = get_garbage_color(s.garbage_type)
+            
+            # 1日分の行を作成
+            row = {
+                "type": "box",
+                "layout": "horizontal",
+                "spacing": "sm",
+                "margin": "md",
+                "contents": [
+                    {"type": "text", "text": date_str, "size": "sm", "weight": "bold", "color": "#555555", "flex": 3},
+                    {"type": "text", "text": s.garbage_type, "size": "sm", "weight": "bold", "color": color, "flex": 5}
+                ]
+            }
+            # 注意書きがあれば追加
+            if s.notes:
+                row["contents"].append({"type": "text", "text": s.notes, "size": "xs", "color": "#888888", "flex": 4, "wrap": True})
+            contents.append(row)
+
+            # 行の間に薄い線を引く
+            contents.append({"type": "separator", "margin": "md"})
+
+        # ビジュアルパネルの大枠を組み立てる
+        bubble = {
+            "type": "bubble",
+            "size": "mega",
+            "header": {
+                "type": "box", "layout": "vertical", "backgroundColor": "#1DB446",
+                "contents": [
+                    {"type": "text", "text": "📅 ゴミ収集カレンダー", "weight": "bold", "size": "lg", "color": "#FFFFFF"},
+                    {"type": "text", "text": f"{muni_name} {dist_name}（直近30日）", "size": "xs", "color": "#E5F7ED", "margin": "sm"}
+                ]
+            },
+            "body": {
+                "type": "box", "layout": "vertical", "spacing": "sm",
+                "contents": contents
+            }
+        }
+        return FlexSendMessage(alt_text="ゴミ出しカレンダー", contents=bubble)   
+
 
     def get_ai_response(user_text):
         if not politician.openai_api_key: return "AI設定未完了"
@@ -67,7 +139,7 @@ def callback(request, politician_slug):
         today = now_jst.date()
         weekday_str = ["月", "火", "水", "木", "金", "土", "日"][now_jst.weekday()]
         
-        muni_name, dist_name, schedule_text = get_db_schedule()
+        muni_name, dist_name, schedule_text = get_db_schedule_text()
         
         # 💡【修正】Windows特有の文字化けエラーを防ぐため、年月日の作り方を安全な形式に変更しました
         today_str = f"{today.year}年{today.month:02d}月{today.day:02d}日"
@@ -122,11 +194,11 @@ def callback(request, politician_slug):
                     member.save()
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="登録完了！メニューから情報を選んでください。"))
                 return
-
+            
+            # ▼ ゴミ出しカレンダーが押された時、ビジュアルパネル（Flex Message）をそのまま返す
             if user_text == "ゴミ出しカレンダー":
-                muni_name, dist_name, schedule_text = get_db_schedule()
-                msg = f"📅 【{muni_name} {dist_name}】のゴミ出しカレンダー（直近30日）\n\n{schedule_text}\n\n※「明日のゴミは？」など、分からないことはそのまま私（AI）に聞いてくださいね！"
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=msg))
+                flex_msg = get_flex_schedule()
+                line_bot_api.reply_message(event.reply_token, flex_msg)
                 return
 
             # 💡【今回ここを新規追加します】
