@@ -169,7 +169,7 @@ def callback(request, politician_slug):
         member, _ = AiMember.objects.get_or_create(line_user_id=event.source.user_id)
         member.registration_step = 0
         member.save()
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"【{politician.name}】へようこそ！お名前を教えてください。"))
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"【{politician.name}】へようこそ！お名前（〇〇　〇〇）を教えてください。"))
 
     @handler.add(MessageEvent, message=TextMessage)
     def handle_text_message(event):
@@ -187,7 +187,7 @@ def callback(request, politician_slug):
                     member.real_name = user_text
                     member.registration_step = 2
                     member.save()
-                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="班名またはご住所をお願いします。"))
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="班名（〇〇班）またはご住所をお願いします。"))
                 elif member.registration_step == 2:
                     member.address = user_text
                     member.registration_step = 3
