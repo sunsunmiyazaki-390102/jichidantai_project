@@ -182,7 +182,7 @@ def callback(request, politician_slug):
                 if member.registration_step == 0:
                     member.registration_step = 1
                     member.save()
-                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="お名前をフルネームでお願いします。"))
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="姓と名の間にスペースを入れてください。"))
                 elif member.registration_step == 1:
                     member.real_name = user_text
                     member.registration_step = 2
@@ -192,7 +192,7 @@ def callback(request, politician_slug):
                     member.address = user_text
                     member.registration_step = 3
                     member.save()
-                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="登録完了！メニューから情報を選んでください。"))
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="登録完了！ご活用ください。"))
                 return
             
             # ▼ ゴミ出しカレンダーが押された時、ビジュアルパネル（Flex Message）をそのまま返す
