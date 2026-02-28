@@ -66,7 +66,7 @@ def callback(request, politician_slug):
             return muni_name, dist_name, "\n".join(lines)
         return muni_name, dist_name, "※直近30日の収集予定は登録されていません。"
 
-    # 💡【人間用】LINE画面に表示する美しいビジュアルカレンダー
+    # 💡【人間用】LINE画面に表示する美しいビジュアルカレンダー（同日まとめ対応版）
     def get_flex_schedule():
         now_jst = timezone.localtime(timezone.now())
         today = now_jst.date()
@@ -84,14 +84,34 @@ def callback(request, politician_slug):
         if not schedules.exists():
             return TextSendMessage(text=f"【{muni_name} {dist_name}】\n直近30日の収集予定は登録されていません。")
 
+        # ★【新規追加】日付ごとに同じ日のスケジュールをひとまとめにする
+        grouped_schedules = {}
+        for s in schedules:
+            if s.collection_date not in grouped_schedules:
+                grouped_schedules[s.collection_date] = []
+            grouped_schedules[s.collection_date].append(s)
+
         weekdays = ["月", "火", "水", "木", "金", "土", "日"]
         contents = []
         
-        for s in schedules:
-            w = weekdays[s.collection_date.weekday()]
-            # 日付（例：2/25(水)）
-            date_str = f"{s.collection_date.month}/{s.collection_date.day}({w})"
-            color = get_garbage_color(s.garbage_type)
+        # ★まとめられた日付ごとにループを回す
+        for date_obj, items in grouped_schedules.items():
+            w = weekdays[date_obj.weekday()]
+            date_str = f"{date_obj.month}/{date_obj.day}({w})"
+            
+            # ゴミの種類を横並びにするためのテキスト（span）のリストを作成
+            spans = []
+            for i, item in enumerate(items):
+                color = get_garbage_color(item.garbage_type)
+                spans.append({"type": "span", "text": item.garbage_type, "color": color, "weight": "bold"})
+                
+                # 注意書きがあれば小さく追加
+                if item.notes:
+                    spans.append({"type": "span", "text": f"({item.notes})", "color": "#888888", "size": "xs"})
+                
+                # 最後のアイテムでなければ区切り文字（ / ）を入れる
+                if i < len(items) - 1:
+                    spans.append({"type": "span", "text": " / ", "color": "#CCCCCC"})
             
             # 1日分の行を作成
             row = {
@@ -101,15 +121,10 @@ def callback(request, politician_slug):
                 "margin": "md",
                 "contents": [
                     {"type": "text", "text": date_str, "size": "sm", "weight": "bold", "color": "#555555", "flex": 3},
-                    {"type": "text", "text": s.garbage_type, "size": "sm", "weight": "bold", "color": color, "flex": 5}
+                    {"type": "text", "contents": spans, "size": "sm", "flex": 5, "wrap": True} # ←ここでspanを表示
                 ]
             }
-            # 注意書きがあれば追加
-            if s.notes:
-                row["contents"].append({"type": "text", "text": s.notes, "size": "xs", "color": "#888888", "flex": 4, "wrap": True})
             contents.append(row)
-
-            # 行の間に薄い線を引く
             contents.append({"type": "separator", "margin": "md"})
 
         # ビジュアルパネルの大枠を組み立てる
@@ -128,8 +143,7 @@ def callback(request, politician_slug):
                 "contents": contents
             }
         }
-        return FlexSendMessage(alt_text="ゴミ出しカレンダー", contents=bubble)   
-
+        return FlexSendMessage(alt_text="ゴミ出しカレンダー", contents=bubble)
 
     def get_ai_response(user_text):
         if not politician.openai_api_key: return "AI設定未完了"
