@@ -22,14 +22,14 @@ class CourseContentInline(admin.StackedInline):
 
 @admin.register(Politician)
 class PoliticianAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'gomi_region', 'has_api_key')
+    list_display = ('name', 'slug','gomi_municipality', 'gomi_district', 'has_api_key')
     # 自治会の編集画面に「案内の紐付け」を表示
     inlines = [CourseAssignmentInline]
     
     fieldsets = (
         ('基本情報', {'fields': ('name', 'slug')}),
         ('LINE連携設定', {'fields': ('line_channel_secret', 'line_access_token')}),
-        ('地域設定', {'fields': ('gomi_region',)}),
+        ('地域設定', {'fields': ('gomi_municipality', 'gomi_district')}),
         ('AI（頭脳）設定', {
             'fields': ('openai_api_key', 'ai_model_name', 'system_prompt', 'openai_assistant_id'),
         }),

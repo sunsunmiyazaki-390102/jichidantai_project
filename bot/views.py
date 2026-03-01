@@ -14,13 +14,7 @@ import traceback
 from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, GarbageCalendar
 from members.models import AiMember
 
-# ★Excelに入力した「市町村」と「地区」の文字と完全に一致させる必要があります
-REGION_MAP = {
-    'miyazaki_kita_a': ('宮崎市', '北A地区'),
-    'miyazaki_kita_b': ('宮崎市', '北B地区'),
-    'miyazaki_minami_a': ('宮崎市', '南A地区'),
-    'miyazaki_minami_b': ('宮崎市', '南B地区'),
-}
+# 💡【削除】ここに書いてあった REGION_MAP は不要になったため完全に削除しました！
 
 @csrf_exempt
 def callback(request, politician_slug):
@@ -43,12 +37,14 @@ def callback(request, politician_slug):
     def get_db_schedule_text():
         now_jst = timezone.localtime(timezone.now())
         today = now_jst.date()
-        muni_dist = REGION_MAP.get(politician.gomi_region)
         
-        if not muni_dist:
+        # ★【変更】データベース（Politician）から直接「市町村」と「地区」を取り出す！
+        muni_name = politician.gomi_municipality
+        dist_name = politician.gomi_district
+        
+        if not muni_name or not dist_name:
             return "未設定", "未設定", "※地区情報が設定されていません。"
         
-        muni_name, dist_name = muni_dist
         schedules = GarbageCalendar.objects.filter(
             municipality=muni_name, district=dist_name,
             collection_date__gte=today, collection_date__lte=today + timedelta(days=30)
@@ -65,16 +61,18 @@ def callback(request, politician_slug):
             return muni_name, dist_name, "\n".join(lines)
         return muni_name, dist_name, "※直近30日の収集予定は登録されていません。"
 
-    # 💡【人間用】LINE画面に表示する美しいビジュアルカレンダー（同日まとめ完全対応版）
+    # 💡【人間用】LINE画面に表示する美しいビジュアルカレンダー
     def get_flex_schedule():
         now_jst = timezone.localtime(timezone.now())
         today = now_jst.date()
-        muni_dist = REGION_MAP.get(politician.gomi_region)
         
-        if not muni_dist:
-            return TextSendMessage(text="※地区情報が設定されていません。")
+        # ★【変更】データベース（Politician）から直接取り出す！
+        muni_name = politician.gomi_municipality
+        dist_name = politician.gomi_district
         
-        muni_name, dist_name = muni_dist
+        if not muni_name or not dist_name:
+            return TextSendMessage(text="※地区情報が設定されていません。\n管理者に「市町村」と「地区」の設定をご依頼ください。")
+        
         schedules = GarbageCalendar.objects.filter(
             municipality=muni_name, district=dist_name,
             collection_date__gte=today, collection_date__lte=today + timedelta(days=30)
@@ -83,7 +81,7 @@ def callback(request, politician_slug):
         if not schedules.exists():
             return TextSendMessage(text=f"【{muni_name} {dist_name}】\n直近30日の収集予定は登録されていません。")
 
-        # ★【原因①の対策】日付を「文字列（YYYY-MM-DD）」に変換して確実にグループ化する
+        # 日付を「文字列（YYYY-MM-DD）」に変換して確実にグループ化する
         grouped_schedules = {}
         for s in schedules:
             date_key = s.collection_date.strftime('%Y-%m-%d')
@@ -94,7 +92,7 @@ def callback(request, politician_slug):
         weekdays = ["月", "火", "水", "木", "金", "土", "日"]
         contents = []
         
-        # ★まとめられた日付ごとにループを回す
+        # まとめられた日付ごとにループを回す
         for date_key, items in grouped_schedules.items():
             date_obj = items[0].collection_date
             w = weekdays[date_obj.weekday()]
@@ -122,7 +120,7 @@ def callback(request, politician_slug):
                 "margin": "md",
                 "contents": [
                     {"type": "text", "text": date_str, "size": "sm", "weight": "bold", "color": "#555555", "flex": 3},
-                    {"type": "text", "contents": spans, "size": "sm", "flex": 5, "wrap": True} # ←ここでspanを表示
+                    {"type": "text", "contents": spans, "size": "sm", "flex": 5, "wrap": True}
                 ]
             }
             contents.append(row)
@@ -184,7 +182,6 @@ def callback(request, politician_slug):
         member, _ = AiMember.objects.get_or_create(line_user_id=event.source.user_id)
         member.registration_step = 0
         member.save()
-        # 挨拶の時点でスペースを入れるようにお願いしておくと親切です
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"【{politician.name}】へようこそ！\nお名前（姓名）を入力してください。\n※姓と名の間にスペースを入れてくださいね。"))
 
     @handler.add(MessageEvent, message=TextMessage)
@@ -196,14 +193,11 @@ def callback(request, politician_slug):
 
             # 1. 登録フロー
             if member.registration_step < 3:
-                # ステップ0（名前入力待ち）の処理。実際にスペースがあるか判定します
                 if member.registration_step == 0 or member.registration_step == 1:
-                    # 全角スペース「　」も半角スペース「 」も含まれていない場合
                     if " " not in user_text and "　" not in user_text:
                         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="姓と名の間にスペースを入れて、もう一度お名前を入力してください。（例：宮崎 太郎）"))
                         return
                     
-                    # スペースが正しく入っていた場合は保存して、次の「班名待ち」ステップ(2)へ進める
                     member.real_name = user_text
                     member.registration_step = 2 
                     member.save()
@@ -217,7 +211,7 @@ def callback(request, politician_slug):
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="登録完了！メニューからご活用ください。"))
                     return
 
-            # ★【原因②の対策】消えていた「ゴミ出しカレンダー」のトリガーを復活させました！
+            # ゴミ出しカレンダー
             if user_text == "ゴミ出しカレンダー":
                 flex_msg = get_flex_schedule()
                 line_bot_api.reply_message(event.reply_token, flex_msg)
@@ -225,7 +219,6 @@ def callback(request, politician_slug):
 
             # お問い合わせ
             if user_text == "お問い合わせ":
-                # ↓ご自身のメールアドレスに書き換えてください
                 contact_email = "winwinmiyazaki@miyazaki-catv.ne.jp" 
                 msg = f"ご不明な点やご相談は、以下のメールアドレスまでお気軽にお問い合わせください。\n\n✉️ {contact_email}\n\n※送信の際は、お名前と地区名を添えていただけますとスムーズです。"
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=msg))
@@ -233,7 +226,6 @@ def callback(request, politician_slug):
 
             # 教材一覧の表示（カルーセル）
             if user_text in ["案内一覧", "教材一覧", "ルール確認"]:
-                # CourseAssignment（自治会に紐づいた案内）を取得
                 assignments = CourseAssignment.objects.filter(politician=politician).order_by('id')
                 if not assignments.exists():
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="現在、案内（教材）は準備中です。"))
@@ -277,20 +269,17 @@ def callback(request, politician_slug):
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="情報が見つかりませんでした。"))
                     return
 
-                # 進捗の取得・作成（マルチテナント対応済）
                 progress, _ = UserProgress.objects.get_or_create(
                     line_user_id=line_user_id,
                     current_course=course,
                     defaults={'politician': politician, 'last_completed_order': 0}
                 )
 
-                # --- 終了処理 ---
                 if action == "教材終了":
                     reply_text = f"☕ ご確認お疲れ様でした！\n『{course.title}』の続きは、メニューからいつでも再開できます。"
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
                     return
 
-                # --- 復習（見返し）処理 ---
                 if action == "教材復習":
                     completed_contents = CourseContent.objects.filter(
                         course=course,
@@ -312,7 +301,6 @@ def callback(request, politician_slug):
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
                     return
 
-                # --- 進捗の保存処理 ---
                 if action == "教材進捗":
                     completed_order = int(parts[2])
                     if progress.last_completed_order < completed_order:
@@ -348,7 +336,6 @@ def callback(request, politician_slug):
                         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
                     return
 
-                # --- 開始・次へ の処理 ---
                 if action == "教材開始" or action == "教材次へ":
                     next_content = CourseContent.objects.filter(
                         course=course,
@@ -356,14 +343,12 @@ def callback(request, politician_slug):
                     ).order_by('order').first()
 
                     if next_content:
-                        # テキストメッセージの作成
                         msg_text = f"📖 【{next_content.title}】\n\n{next_content.message_text}"
                         if next_content.video_url:
                             msg_text += f"\n\n🎬 参考動画はこちら:\n{next_content.video_url}"
                         
                         text_msg = TextSendMessage(text=msg_text)
                         
-                        # ボタン（FlexMessage）の作成
                         bubble = {
                             "type": "bubble",
                             "body": {

@@ -9,16 +9,9 @@ class Politician(models.Model):
     openai_assistant_id = models.CharField(max_length=255, blank=True, null=True)
     ai_model_name = models.CharField(max_length=50, default="gpt-4o")
     system_prompt = models.TextField(blank=True, null=True)
+    gomi_municipality = models.CharField("ゴミ収集: 市町村", max_length=50, blank=True, null=True, help_text="例: 宮崎市")
+    gomi_district = models.CharField("ゴミ収集: 地区", max_length=50, blank=True, null=True, help_text="例: 北B地区")
     
-    # ゴミ収集地区グループ
-    GOMI_REGION_CHOICES = [
-        ('miyazaki_kita_a', '宮崎市：北A地区'),
-        ('miyazaki_kita_b', '宮崎市：北B地区'),
-        ('miyazaki_minami_a', '宮崎市：南A地区'),
-        ('miyazaki_minami_b', '宮崎市：南B地区'),
-    ]
-    gomi_region = models.CharField("ゴミ収集地区グループ", max_length=50, choices=GOMI_REGION_CHOICES, blank=True, null=True)
-
     # 中間テーブル経由の多対多関係
     courses = models.ManyToManyField('Course', through='CourseAssignment', blank=True)
 
