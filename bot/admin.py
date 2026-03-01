@@ -75,6 +75,14 @@ class GarbageCalendarResource(resources.ModelResource):
         import_id_fields = ('municipality', 'district', 'collection_date', 'garbage_type')
         skip_unchanged = True
 
+    # 💡【ここを新規追加】行を取り込む前に中身をチェックする魔法の関数
+    def skip_row(self, instance, original, row, import_validation_errors=None):
+        # 「日付」が空っぽ（None、または空白のみ）の場合はエラーを出さずにスキップする
+        if not row.get('日付') or str(row.get('日付')).strip() == '':
+            return True
+        # 日付が入っている場合は、通常の処理（親クラスの処理）をそのまま実行する
+        return super().skip_row(instance, original, row, import_validation_errors=import_validation_errors)
+
 # 2. 管理画面にインポート機能を合体させる
 @admin.register(GarbageCalendar)
 class GarbageCalendarAdmin(ImportExportModelAdmin):
