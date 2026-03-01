@@ -31,7 +31,6 @@ def callback(request, politician_slug):
     signature = request.META.get('HTTP_X_LINE_SIGNATURE', '')
     body = request.body.decode('utf-8')
 
-
     # ゴミの種類に応じて色を自動判定する関数
     def get_garbage_color(garbage_type):
         if "可燃" in garbage_type or "燃える" in garbage_type: return "#FF3B30" # 赤
@@ -66,7 +65,7 @@ def callback(request, politician_slug):
             return muni_name, dist_name, "\n".join(lines)
         return muni_name, dist_name, "※直近30日の収集予定は登録されていません。"
 
-    # 💡【人間用】LINE画面に表示する美しいビジュアルカレンダー（同日まとめ対応版）
+    # 💡【人間用】LINE画面に表示する美しいビジュアルカレンダー（同日まとめ完全対応版）
     def get_flex_schedule():
         now_jst = timezone.localtime(timezone.now())
         today = now_jst.date()
@@ -84,18 +83,20 @@ def callback(request, politician_slug):
         if not schedules.exists():
             return TextSendMessage(text=f"【{muni_name} {dist_name}】\n直近30日の収集予定は登録されていません。")
 
-        # ★【新規追加】日付ごとに同じ日のスケジュールをひとまとめにする
+        # ★【原因①の対策】日付を「文字列（YYYY-MM-DD）」に変換して確実にグループ化する
         grouped_schedules = {}
         for s in schedules:
-            if s.collection_date not in grouped_schedules:
-                grouped_schedules[s.collection_date] = []
-            grouped_schedules[s.collection_date].append(s)
+            date_key = s.collection_date.strftime('%Y-%m-%d')
+            if date_key not in grouped_schedules:
+                grouped_schedules[date_key] = []
+            grouped_schedules[date_key].append(s)
 
         weekdays = ["月", "火", "水", "木", "金", "土", "日"]
         contents = []
         
         # ★まとめられた日付ごとにループを回す
-        for date_obj, items in grouped_schedules.items():
+        for date_key, items in grouped_schedules.items():
+            date_obj = items[0].collection_date
             w = weekdays[date_obj.weekday()]
             date_str = f"{date_obj.month}/{date_obj.day}({w})"
             
@@ -155,7 +156,7 @@ def callback(request, politician_slug):
         
         muni_name, dist_name, schedule_text = get_db_schedule_text()
         
-        # 💡【修正】Windows特有の文字化けエラーを防ぐため、年月日の作り方を安全な形式に変更しました
+        # Windows特有の文字化けエラーを防ぐため、年月日の作り方を安全な形式に変更
         today_str = f"{today.year}年{today.month:02d}月{today.day:02d}日"
         
         system_prompt = (
@@ -183,7 +184,7 @@ def callback(request, politician_slug):
         member, _ = AiMember.objects.get_or_create(line_user_id=event.source.user_id)
         member.registration_step = 0
         member.save()
-        # 💡挨拶の時点でスペースを入れるようにお願いしておくと親切です
+        # 挨拶の時点でスペースを入れるようにお願いしておくと親切です
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"【{politician.name}】へようこそ！\nお名前（姓名）を入力してください。\n※姓と名の間にスペースを入れてくださいね。"))
 
     @handler.add(MessageEvent, message=TextMessage)
@@ -195,7 +196,7 @@ def callback(request, politician_slug):
 
             # 1. 登録フロー
             if member.registration_step < 3:
-                # 💡ステップ0（名前入力待ち）の処理。実際にスペースがあるか判定します
+                # ステップ0（名前入力待ち）の処理。実際にスペースがあるか判定します
                 if member.registration_step == 0 or member.registration_step == 1:
                     # 全角スペース「　」も半角スペース「 」も含まれていない場合
                     if " " not in user_text and "　" not in user_text:
@@ -216,7 +217,13 @@ def callback(request, politician_slug):
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="登録完了！メニューからご活用ください。"))
                     return
 
-            # 💡【今回ここを新規追加します】
+            # ★【原因②の対策】消えていた「ゴミ出しカレンダー」のトリガーを復活させました！
+            if user_text == "ゴミ出しカレンダー":
+                flex_msg = get_flex_schedule()
+                line_bot_api.reply_message(event.reply_token, flex_msg)
+                return
+
+            # お問い合わせ
             if user_text == "お問い合わせ":
                 # ↓ご自身のメールアドレスに書き換えてください
                 contact_email = "winwinmiyazaki@miyazaki-catv.ne.jp" 
@@ -224,9 +231,7 @@ def callback(request, politician_slug):
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=msg))
                 return
 
-            # (前略) お問い合わせやゴミ出しカレンダーの処理...
-
-            # ▼ 💡【変更】教材一覧の表示（カルーセル）
+            # 教材一覧の表示（カルーセル）
             if user_text in ["案内一覧", "教材一覧", "ルール確認"]:
                 # CourseAssignment（自治会に紐づいた案内）を取得
                 assignments = CourseAssignment.objects.filter(politician=politician).order_by('id')
@@ -261,7 +266,7 @@ def callback(request, politician_slug):
                 line_bot_api.reply_message(event.reply_token, flex_message)
                 return
 
-            # ▼ 💡【変更】学習（案内）のサイクル処理
+            # 学習（案内）のサイクル処理
             if user_text.startswith("教材開始:") or user_text.startswith("教材進捗:") or user_text.startswith("教材次へ:") or user_text.startswith("教材終了:") or user_text.startswith("教材復習:"):
                 parts = user_text.split(":")
                 action = parts[0]
@@ -395,6 +400,7 @@ def callback(request, politician_slug):
                         line_bot_api.reply_message(event.reply_token, FlexSendMessage(alt_text="全確認完了", contents=bubble))
                     return
 
+            # ▼ AI応答
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=get_ai_response(user_text)))
 
         except Exception as e:
