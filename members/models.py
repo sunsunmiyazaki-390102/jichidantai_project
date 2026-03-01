@@ -29,6 +29,9 @@ class AiMember(models.Model):
         blank=True, 
         verbose_name="電話番号"
     )
+
+    line_display_name = models.CharField("LINE登録名", max_length=255, blank=True, null=True)
+    line_picture_url = models.URLField("LINEアイコン画像URL", max_length=1000, blank=True, null=True)    
     
     # 既存自治会名簿との紐付け用
     existing_member_id = models.CharField(

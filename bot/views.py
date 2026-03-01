@@ -179,8 +179,19 @@ def callback(request, politician_slug):
 
     @handler.add(FollowEvent)
     def handle_follow(event):
-        member, _ = AiMember.objects.get_or_create(line_user_id=event.source.user_id)
+        line_user_id = event.source.user_id
+        member, _ = AiMember.objects.get_or_create(line_user_id=line_user_id)
         member.registration_step = 0
+        
+        # 💡【新規追加】友だち追加された瞬間にLINEプロフィールを自動取得！
+        try:
+            profile = line_bot_api.get_profile(line_user_id)
+            member.line_display_name = profile.display_name # LINEの表示名を保存
+            member.line_picture_url = profile.picture_url   # LINEのアイコン画像を保存
+        except Exception as e:
+            # 万が一、一瞬でブロックされた場合などはエラーを無視して進める
+            print(f"プロフィール取得エラー: {e}")
+            
         member.save()
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"【{politician.name}】へようこそ！\nお名前（姓名）を入力してください。\n※姓と名の間にスペースを入れてくださいね。"))
 
