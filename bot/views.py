@@ -183,7 +183,8 @@ def callback(request, politician_slug):
         member, _ = AiMember.objects.get_or_create(line_user_id=event.source.user_id)
         member.registration_step = 0
         member.save()
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"【{politician.name}】へようこそ！お名前（姓名）を入力してください。"))
+        # 💡挨拶の時点でスペースを入れるようにお願いしておくと親切です
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"【{politician.name}】へようこそ！\nお名前（姓名）を入力してください。\n※姓と名の間にスペースを入れてくださいね。"))
 
     @handler.add(MessageEvent, message=TextMessage)
     def handle_text_message(event):
@@ -192,28 +193,28 @@ def callback(request, politician_slug):
             line_user_id = event.source.user_id
             member, _ = AiMember.objects.get_or_create(line_user_id=line_user_id)
 
+            # 1. 登録フロー
             if member.registration_step < 3:
-                if member.registration_step == 0:
-                    member.registration_step = 1
-                    member.save()
-                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="姓と名の間にスペースを入れてください。"))
-                elif member.registration_step == 1:
+                # 💡ステップ0（名前入力待ち）の処理。実際にスペースがあるか判定します
+                if member.registration_step == 0 or member.registration_step == 1:
+                    # 全角スペース「　」も半角スペース「 」も含まれていない場合
+                    if " " not in user_text and "　" not in user_text:
+                        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="姓と名の間にスペースを入れて、もう一度お名前を入力してください。（例：宮崎 太郎）"))
+                        return
+                    
+                    # スペースが正しく入っていた場合は保存して、次の「班名待ち」ステップ(2)へ進める
                     member.real_name = user_text
-                    member.registration_step = 2
+                    member.registration_step = 2 
                     member.save()
-                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="班名（〇〇班）または部屋番号をお願いします。"))
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ありがとうございます。\n次に、班名（〇〇班）または部屋番号をお願いします。"))
+                    return
+
                 elif member.registration_step == 2:
                     member.address = user_text
-                    member.registration_step = 3
+                    member.registration_step = 3 # 登録完了
                     member.save()
-                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="登録完了！ご活用ください。"))
-                return
-            
-            # ▼ ゴミ出しカレンダーが押された時、ビジュアルパネル（Flex Message）をそのまま返す
-            if user_text == "ゴミ出しカレンダー":
-                flex_msg = get_flex_schedule()
-                line_bot_api.reply_message(event.reply_token, flex_msg)
-                return
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="登録完了！メニューからご活用ください。"))
+                    return
 
             # 💡【今回ここを新規追加します】
             if user_text == "お問い合わせ":
