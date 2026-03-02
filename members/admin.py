@@ -23,13 +23,23 @@ class TenantMemberProfileAdmin(admin.ModelAdmin):
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
+        
         # 登録済みのデータで、かつ所属団体が紐づいている場合のみラベルを上書きする
         if obj and obj.politician:
-            form.base_fields['group_1'].label = obj.politician.label_group_1
-            form.base_fields['group_2'].label = obj.politician.label_group_2
-            form.base_fields['group_3'].label = obj.politician.label_group_3
-            form.base_fields['note_1'].label = obj.politician.label_note_1
-            form.base_fields['note_2'].label = obj.politician.label_note_2
-            form.base_fields['note_3'].label = obj.politician.label_note_3
+            # 【防衛的措置】フォーム内に該当項目が存在する場合のみ処理を行う
+            if 'group_1' in form.base_fields:
+                form.base_fields['group_1'].label = obj.politician.label_group_1
+            if 'group_2' in form.base_fields:
+                form.base_fields['group_2'].label = obj.politician.label_group_2
+            if 'group_3' in form.base_fields:
+                form.base_fields['group_3'].label = obj.politician.label_group_3
+                
+            if 'note_1' in form.base_fields:
+                form.base_fields['note_1'].label = obj.politician.label_note_1
+            if 'note_2' in form.base_fields:
+                form.base_fields['note_2'].label = obj.politician.label_note_2
+            if 'note_3' in form.base_fields:
+                form.base_fields['note_3'].label = obj.politician.label_note_3
+                
         return form
-        
+    
