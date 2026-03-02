@@ -11,7 +11,16 @@ class Politician(models.Model):
     system_prompt = models.TextField(blank=True, null=True)
     gomi_municipality = models.CharField("ゴミ収集: 市町村", max_length=50, blank=True, null=True, help_text="例: 宮崎市")
     gomi_district = models.CharField("ゴミ収集: 地区", max_length=50, blank=True, null=True, help_text="例: 北B地区")
+
+    # --- 団体側カスタム項目のラベル定義（メタデータ駆動） ---
+    label_group_1 = models.CharField("グループ1の名称", max_length=50, default="グループ1", help_text="例: 役職名")
+    label_group_2 = models.CharField("グループ2の名称", max_length=50, default="グループ2", help_text="例: 所属班")
+    label_group_3 = models.CharField("グループ3の名称", max_length=50, default="グループ3", help_text="例: 専門部会")
     
+    label_note_1 = models.CharField("備考1の名称", max_length=50, default="備考1", help_text="例: 駐車場番号")
+    label_note_2 = models.CharField("備考2の名称", max_length=50, default="備考2", help_text="例: 家族構成")
+    label_note_3 = models.CharField("備考3の名称", max_length=50, default="備考3", help_text="例: 特記事項")
+
     # 中間テーブル経由の多対多関係
     courses = models.ManyToManyField('Course', through='CourseAssignment', blank=True)
 
