@@ -81,5 +81,5 @@ class TenantMemberProfile(models.Model):
     group_2 = models.CharField("グループ2", max_length=100, blank=True, null=True)
     group_3 = models.CharField("グループ3", max_length=100, blank=True, null=True)
     note_1 = models.CharField("備考1", max_length=255, blank=True, null=True)
-    note_2 = models
-    
+    note_2 = models.CharField("備考2", max_length=255, blank=True, null=True)
+    note_3 = models.CharField("備考3", max_length=255, blank=True, null=True)   
