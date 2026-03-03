@@ -6,28 +6,54 @@ from import_export.widgets import DateWidget
 # 古いGarbageScheduleは削除し、GarbageCalendarを含めてインポートします
 from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar
 
-# 自治会の編集画面の中に「案内の紐付け」を出す設定
+# ==========================================
+# 🛡️ 運営側の防衛的措置：テナント分離用・基底クラス
+# ==========================================
+class TenantIsolationAdmin(admin.ModelAdmin):
+    """
+    ログインユーザーの権限に応じて表示データを物理的に分離する基底クラス。
+    各Adminクラスで `tenant_filter_field` を指定して使用する。
+    """
+    tenant_filter_field = 'politician__admin_users' # デフォルトのフィルタ条件
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        # スーパーユーザー（開発者）は全件表示
+        if request.user.is_superuser:
+            return qs
+        # 一般管理者（自治会担当者）は自身の担当テナントのみ表示（重複排除）
+        return qs.filter(**{self.tenant_filter_field: request.user}).distinct()
+
+# ==========================================
+# インライン設定
+# ==========================================
 class CourseAssignmentInline(admin.TabularInline):
     model = CourseAssignment
     extra = 1
     verbose_name = "割り当てる案内情報"
     verbose_name_plural = "案内情報の割り当て"
 
-# 案内の編集画面の中に「メッセージ内容」を出す設定
 class CourseContentInline(admin.StackedInline):
     model = CourseContent
     extra = 1
     verbose_name = "メッセージ内容（ステップ）"
     verbose_name_plural = "メッセージ内容（ステップ）"
 
+# ==========================================
+# 管理画面の登録
+# ==========================================
 @admin.register(Politician)
 class PoliticianAdmin(admin.ModelAdmin):
     list_display = ('name', 'slug','gomi_municipality', 'gomi_district', 'has_api_key')
-    # 自治会の編集画面に「案内の紐付け」を表示
     inlines = [CourseAssignmentInline]
     
+    # 【防衛的仕様】誤操作による権限削除を防ぐための左右分割UI
+    filter_horizontal = ('admin_users',)
+    
     fieldsets = (
-        ('基本情報', {'fields': ('name', 'slug')}),
+        ('基本情報・システム権限', {
+            'fields': ('name', 'slug', 'admin_users') # ← admin_users を追加
+        }),
         ('LINE連携設定', {'fields': ('line_channel_secret', 'line_access_token')}),
         ('地域設定', {'fields': ('gomi_municipality', 'gomi_district')}),
         ('AI（頭脳）設定', {
@@ -40,28 +66,40 @@ class PoliticianAdmin(admin.ModelAdmin):
     has_api_key.boolean = True
     has_api_key.short_description = "APIキー設定済"
 
+    # 自治会マスタ自体のテナント分離
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(admin_users=request.user)
+
 @admin.register(Course)
-class CourseAdmin(admin.ModelAdmin):
+class CourseAdmin(TenantIsolationAdmin):
+    # CourseはCourseAssignmentを通じてPoliticianに紐づくためフィルタ条件を変更
+    tenant_filter_field = 'courseassignment__politician__admin_users'
     list_display = ('title',)
-    # 案内の編集画面に「メッセージ内容」を表示
     inlines = [CourseContentInline]
 
 @admin.register(Event)
-class EventAdmin(admin.ModelAdmin):
+class EventAdmin(TenantIsolationAdmin):
+    tenant_filter_field = 'politician__admin_users'
     list_display = ('title', 'politician', 'date')
     list_filter = ('politician',)
 
 @admin.register(UserProgress)
-class UserProgressAdmin(admin.ModelAdmin):
+class UserProgressAdmin(TenantIsolationAdmin):
+    tenant_filter_field = 'politician__admin_users'
     list_display = ('line_user_id', 'politician', 'current_course', 'updated_at')
 
 @admin.register(MessageLog)
-class MessageLogAdmin(admin.ModelAdmin):
+class MessageLogAdmin(TenantIsolationAdmin):
+    # MessageLog は AiMember (member) を経由して Politician に紐づく想定
+    tenant_filter_field = 'member__politician__admin_users'
     list_display = ('member', 'role', 'created_at')
 
-# === ここから GarbageCalendar 用のインポート設定 ===
-
-# 1. Excel(CSV)の列と、データベースの項目を紐付ける「翻訳辞書」
+# ==========================================
+# GarbageCalendar 用のインポート設定
+# ==========================================
 class GarbageCalendarResource(resources.ModelResource):
     collection_date = fields.Field(attribute='collection_date', column_name='日付', widget=DateWidget(format='%Y/%m/%d'))
     municipality = fields.Field(attribute='municipality', column_name='市町村')
@@ -71,19 +109,14 @@ class GarbageCalendarResource(resources.ModelResource):
 
     class Meta:
         model = GarbageCalendar
-        # 重複して取り込まないための基準キー（この4つが同じなら「上書き」扱いにする）
         import_id_fields = ('municipality', 'district', 'collection_date', 'garbage_type')
         skip_unchanged = True
 
-    # 💡【ここを新規追加】行を取り込む前に中身をチェックする魔法の関数
     def skip_row(self, instance, original, row, import_validation_errors=None):
-        # 「日付」が空っぽ（None、または空白のみ）の場合はエラーを出さずにスキップする
         if not row.get('日付') or str(row.get('日付')).strip() == '':
             return True
-        # 日付が入っている場合は、通常の処理（親クラスの処理）をそのまま実行する
         return super().skip_row(instance, original, row, import_validation_errors=import_validation_errors)
 
-# 2. 管理画面にインポート機能を合体させる
 @admin.register(GarbageCalendar)
 class GarbageCalendarAdmin(ImportExportModelAdmin):
     resource_class = GarbageCalendarResource
@@ -91,3 +124,18 @@ class GarbageCalendarAdmin(ImportExportModelAdmin):
     list_filter = ('municipality', 'district')
     search_fields = ('garbage_type', 'notes')
     date_hierarchy = 'collection_date'
+
+    # ゴミカレンダーのテナント分離（市町村名による動的マッチング）
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        
+        # ログインユーザーが管理する自治会の「市町村名」リストを取得
+        allowed_municipalities = Politician.objects.filter(
+            admin_users=request.user
+        ).values_list('gomi_municipality', flat=True)
+        
+        # 該当する市町村のゴミデータのみ許可
+        return qs.filter(municipality__in=allowed_municipalities)
+    

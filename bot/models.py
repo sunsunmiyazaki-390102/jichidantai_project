@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import User
 
 class Politician(models.Model):
     name = models.CharField("自治会名", max_length=100)
@@ -11,6 +12,15 @@ class Politician(models.Model):
     system_prompt = models.TextField(blank=True, null=True)
     gomi_municipality = models.CharField("ゴミ収集: 市町村", max_length=50, blank=True, null=True, help_text="例: 宮崎市")
     gomi_district = models.CharField("ゴミ収集: 地区", max_length=50, blank=True, null=True, help_text="例: 北B地区")
+
+    # --- [追加] テナント管理者（マルチテナント分離用） ---
+    admin_users = models.ManyToManyField(
+        User, 
+        verbose_name="システム管理者", 
+        blank=True, 
+        related_name="managed_politicians",
+        help_text="この自治会を管理できるユーザー（複数選択可）"
+    )
 
     # --- 団体側カスタム項目のラベル定義（メタデータ駆動） ---
     label_group_1 = models.CharField("グループ1の名称", max_length=50, default="グループ1", help_text="例: 役職名")
