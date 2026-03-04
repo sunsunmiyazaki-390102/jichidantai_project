@@ -1,10 +1,12 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from import_export import resources, fields
 from import_export.admin import ImportExportModelAdmin
 from import_export.widgets import DateWidget
 
 # 古いGarbageScheduleは削除し、GarbageCalendarを含めてインポートします
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse
+from linebot import LineBotApi
+from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, PostbackAction
 
 # ==========================================
 # 🛡️ 運営側の防衛的措置：テナント分離用・基底クラス
@@ -138,4 +140,112 @@ class GarbageCalendarAdmin(ImportExportModelAdmin):
         
         # 該当する市町村のゴミデータのみ許可
         return qs.filter(municipality__in=allowed_municipalities)
+
+# ==========================================
+# 防災・アンケート配信の管理画面
+# ==========================================
+
+class EmergencyResponseInline(admin.TabularInline):
+    """イベント作成画面の「中」に、回答結果を一覧表示させるパネル（UX向上）"""
+    model = EmergencyResponse
+    extra = 0
+    # 回答結果はシステムが自動記録するため、人間が手動で書き換えられないようにする
+    readonly_fields = ('ai_member', 'answer', 'replied_at')
+    can_delete = False
     
+    def has_add_permission(self, request, obj):
+        return False # 人間が手動ででっち上げの回答を追加できないようにする防衛策
+    
+@admin.action(description="選択した配信をLINEで一斉送信する")
+def broadcast_emergency_message(modeladmin, request, queryset):
+    """一覧画面から選択したイベントをLINEへ送信するアクション"""
+    for event in queryset:
+        if not event.is_active:
+            messages.warning(request, f'「{event.title}」は受付中ではないため送信をスキップしました。')
+            continue
+
+        politician = event.politician
+        if not politician.line_channel_access_token:
+            messages.error(request, f'エラー：{politician} のLINEアクセストークンが設定されていないため送信できません。')
+            continue
+
+        try:
+            # 団体ごとのLINE Botアカウントとして接続
+            line_bot_api = LineBotApi(politician.line_channel_access_token)
+
+            # クイックリプライ（画面下部に出るタップボタン）を作成
+            items = []
+            # dataの中身が、後でWebhookで受け取る際の「暗号（合言葉）」になります
+            if event.choice_1:
+                items.append(QuickReplyButton(action=PostbackAction(label=event.choice_1[:20], data=f"action=emergency&event_id={event.id}&ans=1", display_text=event.choice_1)))
+            if event.choice_2:
+                items.append(QuickReplyButton(action=PostbackAction(label=event.choice_2[:20], data=f"action=emergency&event_id={event.id}&ans=2", display_text=event.choice_2)))
+            if event.choice_3:
+                items.append(QuickReplyButton(action=PostbackAction(label=event.choice_3[:20], data=f"action=emergency&event_id={event.id}&ans=3", display_text=event.choice_3)))
+
+            if not items:
+                messages.error(request, f'「{event.title}」は選択肢（ボタン）が一つもないため送信を中止しました。')
+                continue
+
+            # 送信するメッセージ本体を組み立てる
+            message_text = f"【{event.title}】\n\n{event.message_body}"
+            message = TextSendMessage(
+                text=message_text,
+                quick_reply=QuickReply(items=items)
+            )
+
+            # 一斉送信（ブロードキャスト）を実行
+            line_bot_api.broadcast(message)
+            messages.success(request, f'「{event.title}」をLINEで一斉送信しました！')
+
+        except Exception as e:
+            messages.error(request, f'「{event.title}」の送信中にエラーが発生しました: {e}')
+
+@admin.register(EmergencyEvent)
+class EmergencyEventAdmin(admin.ModelAdmin):
+    list_display = ('title', 'politician', 'is_active', 'created_at')
+    list_filter = ('politician', 'is_active')
+    search_fields = ('title', 'message_body')
+    
+    # ここで先ほどのインラインパネルを組み込む
+    inlines = [EmergencyResponseInline]
+
+    # 【追記】アクションとして登録する
+    actions = [broadcast_emergency_message]    
+
+    def get_queryset(self, request):
+        """【防衛策】テナント分離（一覧画面に他団体の配信を見せない）"""
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(politician__admin_users=request.user).distinct()
+
+    def get_form(self, request, obj=None, **kwargs):
+        """【防衛策】一般管理者がメッセージを作成する際、間違えて他団体を選べないようにする"""
+        form = super().get_form(request, obj, **kwargs)
+        if not request.user.is_superuser and 'politician' in form.base_fields:
+            # 「所属団体」のドロップダウンの選択肢を、自分が管理している団体だけに絞り込む
+            form.base_fields['politician'].queryset = form.base_fields['politician'].queryset.filter(admin_users=request.user)
+        return form
+
+    def save_model(self, request, obj, form, change):
+        """【防衛策】保存時に、操作者の自治体を裏側で強制的にセットする"""
+        if not request.user.is_superuser and not obj.politician_id:
+            tenant = Politician.objects.filter(admin_users=request.user).first()
+            if tenant:
+                obj.politician = tenant
+        super().save_model(request, obj, form, change)
+
+@admin.register(EmergencyResponse)
+class EmergencyResponseAdmin(ImportExportModelAdmin):
+    """CSVエクスポート機能を持たせた「回答集計専用」の管理画面"""
+    list_display = ('event', 'ai_member', 'answer', 'replied_at')
+    # イベントごと、または回答（無事/助けが必要など）ごとに絞り込めるようにする
+    list_filter = ('event__politician', 'event', 'answer')
+    
+    def get_queryset(self, request):
+        """【防衛策】テナント分離（他団体の回答結果を絶対に見せない）"""
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(event__politician__admin_users=request.user).distinct()

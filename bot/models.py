@@ -120,3 +120,51 @@ class GarbageCalendar(models.Model):
 
     def __str__(self):
         return f"【{self.municipality} {self.district}】{self.collection_date.strftime('%Y/%m/%d')} : {self.garbage_type}"
+    
+# ==========================================
+# 防災・アンケート配信機能のデータベース
+# ==========================================
+
+class EmergencyEvent(models.Model):
+    """団体が送信する「防災・アンケート配信」の箱（親）"""
+    # どの自治会の配信かを厳密に紐付ける（テナント分離の要）
+    politician = models.ForeignKey('bot.Politician', on_delete=models.CASCADE, verbose_name="所属団体")
+    
+    title = models.CharField("配信タイトル（管理用）", max_length=100)
+    message_body = models.TextField("配信メッセージ本文", help_text="LINEで一斉送信されるメインの文章です。")
+    
+    # LINEの画面上に表示させるタップ用ボタンのテキスト（最大3つ）
+    choice_1 = models.CharField("選択肢1", max_length=50, default="無事です / 参加する")
+    choice_2 = models.CharField("選択肢2", max_length=50, default="助けが必要 / 不参加", blank=True, null=True)
+    choice_3 = models.CharField("選択肢3", max_length=50, blank=True, null=True)
+
+    is_active = models.BooleanField("受付中", default=True, help_text="チェックを外すと回答を締め切ります")
+    created_at = models.DateTimeField("作成日時", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "防災・アンケート配信"
+        verbose_name_plural = "防災・アンケート配信一覧"
+
+    def __str__(self):
+        # 管理画面での表示名（そのままself.politicianを呼べば、自動的に正しい自治会名が入ります）
+        return f"[{self.politician}] {self.title}"
+
+class EmergencyResponse(models.Model):
+    """住民がLINEのボタンを押した結果を記録する箱（子）"""
+    event = models.ForeignKey(EmergencyEvent, on_delete=models.CASCADE, related_name='responses', verbose_name="対象イベント")
+    
+    # 誰が答えたか（循環参照エラーを防ぐため 'members.AiMember' と文字列で指定します）
+    ai_member = models.ForeignKey('members.AiMember', on_delete=models.CASCADE, verbose_name="回答者（LINEアカウント）")
+    
+    answer = models.CharField("回答内容", max_length=50)
+    replied_at = models.DateTimeField("回答日時", auto_now=True) # auto_now=True により、回答を変更した際に時間が更新される
+
+    class Meta:
+        verbose_name = "住民からの回答"
+        verbose_name_plural = "住民からの回答一覧"
+        # 1つのイベントにつき、1人の住民が複数回バラバラに回答を作らないようにする防衛策
+        unique_together = ('event', 'ai_member')
+
+    def __str__(self):
+        return f"{self.ai_member.line_display_name} -> {self.answer}"
+        
