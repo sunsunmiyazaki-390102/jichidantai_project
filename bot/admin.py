@@ -197,10 +197,21 @@ def broadcast_emergency_message(modeladmin, request, queryset):
                     if r.ai_member and r.ai_member.line_user_id:
                         target_line_user_ids.add(r.ai_member.line_user_id)
 
-            elif event.target_group:
-                # 【条件2】特定の班（名簿のグループ1）の人を抽出
+            elif event.target_group_1 or event.target_group_2 or event.target_group_3 or event.target_note_1 or event.target_note_2 or event.target_note_3:
+                # 【条件2】名簿の項目（6つの箱）で絞り込む（AND検索）
                 from members.models import TenantMemberProfile
-                profiles = TenantMemberProfile.objects.filter(politician=politician, group_1=event.target_group).exclude(ai_member__isnull=True)
+                
+                # 入力された箱だけを条件に追加する「動的フィルター」を作成
+                filters = {'politician': politician}
+                if event.target_group_1: filters['group_1'] = event.target_group_1
+                if event.target_group_2: filters['group_2'] = event.target_group_2
+                if event.target_group_3: filters['group_3'] = event.target_group_3
+                if event.target_note_1: filters['note_1'] = event.target_note_1
+                if event.target_note_2: filters['note_2'] = event.target_note_2
+                if event.target_note_3: filters['note_3'] = event.target_note_3
+
+                # 組み立てた条件(**filters)を使って名簿を検索！
+                profiles = TenantMemberProfile.objects.filter(**filters).exclude(ai_member__isnull=True)
                 for p in profiles:
                     if p.ai_member and p.ai_member.line_user_id:
                         target_line_user_ids.add(p.ai_member.line_user_id)

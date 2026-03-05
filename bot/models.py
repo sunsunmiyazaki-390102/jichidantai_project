@@ -136,10 +136,12 @@ class EmergencyEvent(models.Model):
     # ==========================================
     # ▼ ここからセグメント配信（絞り込み）用の箱を追加
     # ==========================================
-    target_group = models.CharField(
-        "送信対象（班名など）", max_length=50, blank=True, null=True, 
-        help_text="特定の班にのみ送信する場合に入力してください（空欄なら全員に送信）。例：1班"
-    )
+    target_group_1 = models.CharField("絞り込み: グループ1", max_length=50, blank=True, null=True)
+    target_group_2 = models.CharField("絞り込み: グループ2", max_length=50, blank=True, null=True)
+    target_group_3 = models.CharField("絞り込み: グループ3", max_length=50, blank=True, null=True)
+    target_note_1 = models.CharField("絞り込み: 備考1", max_length=50, blank=True, null=True)
+    target_note_2 = models.CharField("絞り込み: 備考2", max_length=50, blank=True, null=True)
+    target_note_3 = models.CharField("絞り込み: 備考3", max_length=50, blank=True, null=True)
     
     target_past_event = models.ForeignKey(
         'self', on_delete=models.SET_NULL, blank=True, null=True, 
