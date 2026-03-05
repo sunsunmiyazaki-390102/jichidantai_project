@@ -155,48 +155,80 @@ class EmergencyResponseInline(admin.TabularInline):
     
     def has_add_permission(self, request, obj):
         return False # 人間が手動ででっち上げの回答を追加できないようにする防衛策
-    
-@admin.action(description="選択した配信をLINEで一斉送信する")
+
+@admin.action(description="選択した配信をLINEで一斉（または絞り込み）送信する")
 def broadcast_emergency_message(modeladmin, request, queryset):
-    """一覧画面から選択したイベントをLINEへ送信するアクション"""
+    """一覧画面から選択したイベントをLINEへ送信するアクション（セグメント配信対応版）"""
     for event in queryset:
         if not event.is_active:
             messages.warning(request, f'「{event.title}」は受付中ではないため送信をスキップしました。')
             continue
 
         politician = event.politician
-        if not politician.line_access_token:
+        if not politician.line_access_token: # ※前回修正した変数名（line_access_token等）に合わせてください
             messages.error(request, f'エラー：{politician} のLINEアクセストークンが設定されていないため送信できません。')
             continue
 
         try:
-            # 団体ごとのLINE Botアカウントとして接続
             line_bot_api = LineBotApi(politician.line_access_token)
 
-            # クイックリプライ（画面下部に出るタップボタン）を作成
+            # クイックリプライ（ボタン）を作成
             items = []
-            # dataの中身が、後でWebhookで受け取る際の「暗号（合言葉）」になります
-            if event.choice_1:
-                items.append(QuickReplyButton(action=PostbackAction(label=event.choice_1[:20], data=f"action=emergency&event_id={event.id}&ans=1", display_text=event.choice_1)))
-            if event.choice_2:
-                items.append(QuickReplyButton(action=PostbackAction(label=event.choice_2[:20], data=f"action=emergency&event_id={event.id}&ans=2", display_text=event.choice_2)))
-            if event.choice_3:
-                items.append(QuickReplyButton(action=PostbackAction(label=event.choice_3[:20], data=f"action=emergency&event_id={event.id}&ans=3", display_text=event.choice_3)))
+            if event.choice_1: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_1[:20], data=f"action=emergency&event_id={event.id}&ans=1", display_text=event.choice_1)))
+            if event.choice_2: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_2[:20], data=f"action=emergency&event_id={event.id}&ans=2", display_text=event.choice_2)))
+            if event.choice_3: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_3[:20], data=f"action=emergency&event_id={event.id}&ans=3", display_text=event.choice_3)))
 
-            if not items:
-                messages.error(request, f'「{event.title}」は選択肢（ボタン）が一つもないため送信を中止しました。')
+            # 送信するメッセージ本体
+            message_text = f"【{event.title}】\n\n{event.message_body}"
+            if items:
+                message = TextSendMessage(text=message_text, quick_reply=QuickReply(items=items))
+            else:
+                message = TextSendMessage(text=message_text) # ボタンなしの単なるお知らせも送れるように改善
+
+            # ==========================================
+            # ▼ 送信対象者（LINE ID）のリストアップ処理
+            # ==========================================
+            target_line_user_ids = set() # 重複を防ぐための箱
+
+            if event.target_past_event and event.target_past_answer:
+                # 【条件1】過去のイベントで特定の回答（「参加する」など）をした人を抽出
+                responses = EmergencyResponse.objects.filter(event=event.target_past_event, answer=event.target_past_answer)
+                for r in responses:
+                    if r.ai_member and r.ai_member.line_user_id:
+                        target_line_user_ids.add(r.ai_member.line_user_id)
+
+            elif event.target_group:
+                # 【条件2】特定の班（名簿のグループ1）の人を抽出
+                from members.models import TenantMemberProfile
+                profiles = TenantMemberProfile.objects.filter(politician=politician, group_1=event.target_group).exclude(ai_member__isnull=True)
+                for p in profiles:
+                    if p.ai_member and p.ai_member.line_user_id:
+                        target_line_user_ids.add(p.ai_member.line_user_id)
+
+            else:
+                # 【条件なし】自団体のLINE連携済みユーザー全員を抽出
+                from members.models import AiMember
+                members = AiMember.objects.filter(politician=politician).exclude(line_user_id__isnull=True)
+                for m in members:
+                    target_line_user_ids.add(m.line_user_id)
+
+            # リスト化
+            target_list = list(target_line_user_ids)
+
+            if not target_list:
+                messages.warning(request, f'「{event.title}」の送信対象者が見つかりませんでした。')
                 continue
 
-            # 送信するメッセージ本体を組み立てる
-            message_text = f"【{event.title}】\n\n{event.message_body}"
-            message = TextSendMessage(
-                text=message_text,
-                quick_reply=QuickReply(items=items)
-            )
-
-            # 一斉送信（ブロードキャスト）を実行
-            line_bot_api.broadcast(message)
-            messages.success(request, f'「{event.title}」をLINEで一斉送信しました！')
+            # ==========================================
+            # ▼ 狙い撃ち送信（マルチキャスト）の実行
+            # ==========================================
+            # LINEの仕様で1回に500人までしか送れないため、500人ずつに分割して送る安全処理
+            chunk_size = 500
+            for i in range(0, len(target_list), chunk_size):
+                chunk = target_list[i:i + chunk_size]
+                line_bot_api.multicast(chunk, message)
+                
+            messages.success(request, f'「{event.title}」を {len(target_list)} 名に送信しました！')
 
         except Exception as e:
             messages.error(request, f'「{event.title}」の送信中にエラーが発生しました: {e}')

@@ -132,6 +132,25 @@ class EmergencyEvent(models.Model):
     
     title = models.CharField("配信タイトル（管理用）", max_length=100)
     message_body = models.TextField("配信メッセージ本文", help_text="LINEで一斉送信されるメインの文章です。")
+
+    # ==========================================
+    # ▼ ここからセグメント配信（絞り込み）用の箱を追加
+    # ==========================================
+    target_group = models.CharField(
+        "送信対象（班名など）", max_length=50, blank=True, null=True, 
+        help_text="特定の班にのみ送信する場合に入力してください（空欄なら全員に送信）。例：1班"
+    )
+    
+    target_past_event = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, blank=True, null=True, 
+        verbose_name="絞り込み対象の過去配信", 
+        help_text="特定のアンケートに回答した人にのみ送る場合に選択してください。"
+    )
+    
+    target_past_answer = models.CharField(
+        "絞り込み対象の回答", max_length=50, blank=True, null=True, 
+        help_text="例：「参加する」など（※過去配信を選択した場合のみ有効です）"
+    )
     
     # LINEの画面上に表示させるタップ用ボタンのテキスト（最大3つ）
     choice_1 = models.CharField("選択肢1", max_length=50, default="無事です / 参加する")
