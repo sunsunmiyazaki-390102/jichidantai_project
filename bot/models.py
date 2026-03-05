@@ -1,5 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
+import uuid
+import os
 
 class Politician(models.Model):
     name = models.CharField("自治会名", max_length=100)
@@ -125,6 +127,12 @@ class GarbageCalendar(models.Model):
 # 防災・アンケート配信機能のデータベース
 # ==========================================
 
+def get_safe_filename(instance, filename):
+    """日本語ファイル名によるLINEのURL途切れを防ぐため、ランダムな英数字に自動変換する"""
+    ext = filename.split('.')[-1] # 拡張子（.pdfなど）を取り出す
+    new_filename = f"{uuid.uuid4().hex}.{ext}" # ランダムな英数字.pdf を作る
+    return os.path.join('emergency_files/', new_filename)
+
 class EmergencyEvent(models.Model):
     """団体が送信する「防災・アンケート配信」の箱（親）"""
     # どの自治会の配信かを厳密に紐付ける（テナント分離の要）
@@ -145,7 +153,7 @@ class EmergencyEvent(models.Model):
 
     attached_file = models.FileField(
         "添付ファイル (PDF等)", 
-        upload_to="emergency_files/", 
+        upload_to=get_safe_filename, # ★ここを 'emergency_files/' から書き換え！
         blank=True, 
         null=True, 
         help_text="回覧板や詳細資料のPDFを添付できます（※選択するとLINEにURLが自動送信されます）。"
