@@ -181,7 +181,10 @@ def callback(request, politician_slug):
     @handler.add(FollowEvent)
     def handle_follow(event):
         line_user_id = event.source.user_id
-        member, _ = AiMember.objects.get_or_create(line_user_id=line_user_id)
+        member, _ = AiMember.objects.get_or_create(
+            line_user_id=line_user_id,
+            defaults={'politician': politician}
+        )
         member.registration_step = 0
         
         # 💡【新規追加】友だち追加された瞬間にLINEプロフィールを自動取得！
@@ -201,7 +204,10 @@ def callback(request, politician_slug):
         try:
             user_text = event.message.text.strip()
             line_user_id = event.source.user_id
-            member, _ = AiMember.objects.get_or_create(line_user_id=line_user_id)
+            member, _ = AiMember.objects.get_or_create(
+                line_user_id=line_user_id,
+                defaults={'politician': politician}
+            )
 
             # 1. 登録フロー
             if member.registration_step < 3:
@@ -410,7 +416,10 @@ def callback(request, politician_slug):
             postback_data = event.postback.data
             
             # 誰がボタンを押したか特定（自動登録）
-            member, _ = AiMember.objects.get_or_create(line_user_id=line_user_id)
+            member, _ = AiMember.objects.get_or_create(
+                line_user_id=line_user_id,
+                defaults={'politician': politician}
+            )
             
             # 暗号（"action=emergency&event_id=1&ans=1"）を辞書型に解読する
             data_dict = dict(parse_qsl(postback_data))

@@ -119,6 +119,20 @@ class TenantMemberProfileAdmin(ImportExportModelAdmin):
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
+        # スーパーユーザー以外（一般管理者）の場合のみ制限をかける
+        if not request.user.is_superuser:
+            from bot.models import Politician # 念のためインポート
+            tenant = Politician.objects.filter(admin_users=request.user).first()
+            
+            if tenant:
+                # ①「所属団体」のプルダウンを自団体のみに制限（他団体を間違えて選ばないように）
+                if 'politician' in form.base_fields:
+                    form.base_fields['politician'].queryset = form.base_fields['politician'].queryset.filter(id=tenant.id)
+                
+                # ②「紐づくLINEアカウント」のプルダウンを、自団体のLINEユーザーのみに制限
+                if 'ai_member' in form.base_fields:
+                    form.base_fields['ai_member'].queryset = form.base_fields['ai_member'].queryset.filter(politician=tenant)
+                       
         if obj and obj.politician:
             if 'group_1' in form.base_fields:
                 form.base_fields['group_1'].label = obj.politician.label_group_1
