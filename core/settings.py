@@ -140,6 +140,10 @@ STATIC_URL = 'static/'
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 
+# アップロードされたファイル（PDFなど）の保存先とURLルールの設定
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 # LINEやOpenAIのキーをenvから取得する準備（末尾などに追加）
 LINE_CHANNEL_ACCESS_TOKEN = env('LINE_CHANNEL_ACCESS_TOKEN', default='')
 LINE_CHANNEL_SECRET = env('LINE_CHANNEL_SECRET', default='')

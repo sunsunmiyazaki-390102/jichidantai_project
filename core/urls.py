@@ -18,6 +18,8 @@ from django.contrib import admin
 from django.urls import path
 from django.urls import path, include
 from django.http import HttpResponse # ★追加1：画面に文字を出す部品
+from django.conf import settings
+from django.conf.urls.static import static
 
 # ★追加2：簡単な表示機能を作る
 def index(request):
@@ -29,3 +31,7 @@ urlpatterns = [
     path('bot/', include('bot.urls')),
     path('', index), # ★追加3：空っぽ（トップページ）の行き先を指定
 ]
+
+# アップロードされたメディアファイル（PDFや画像）を表示するための設定
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
