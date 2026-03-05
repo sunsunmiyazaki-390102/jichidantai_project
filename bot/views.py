@@ -3,15 +3,16 @@ from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage, FlexSendMessage, FollowEvent
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, FlexSendMessage, FollowEvent, PostbackEvent
 from django.utils import timezone
 from datetime import timedelta
+from urllib.parse import parse_qsl
 from openai import OpenAI
 import time
 import re
 import traceback
 
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, GarbageCalendar
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, GarbageCalendar, EmergencyEvent, EmergencyResponse
 from members.models import AiMember
 
 # 💡【削除】ここに書いてあった REGION_MAP は不要になったため完全に削除しました！
@@ -401,6 +402,52 @@ def callback(request, politician_slug):
 
         except Exception as e:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"エラー: {str(e)}"))
+
+    @handler.add(PostbackEvent)
+    def handle_postback(event):
+        try:
+            line_user_id = event.source.user_id
+            postback_data = event.postback.data
+            
+            # 誰がボタンを押したか特定（自動登録）
+            member, _ = AiMember.objects.get_or_create(line_user_id=line_user_id)
+            
+            # 暗号（"action=emergency&event_id=1&ans=1"）を辞書型に解読する
+            data_dict = dict(parse_qsl(postback_data))
+            
+            # 防災・アンケートの回答だった場合
+            if data_dict.get('action') == 'emergency':
+                event_id = data_dict.get('event_id')
+                ans_num = data_dict.get('ans')
+                
+                # イベントが存在するか、受付中かを確認
+                em_event = EmergencyEvent.objects.filter(id=event_id, politician=politician).first()
+                if not em_event:
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="このアンケートは存在しないか、削除されました。"))
+                    return
+                if not em_event.is_active:
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="このアンケートの受付はすでに終了しています。"))
+                    return
+                
+                # どのボタンが押されたかを判定
+                answer_text = ""
+                if ans_num == '1': answer_text = em_event.choice_1
+                elif ans_num == '2': answer_text = em_event.choice_2
+                elif ans_num == '3': answer_text = em_event.choice_3
+                
+                # データベースに記録（または上書き）する
+                response_obj, created = EmergencyResponse.objects.update_or_create(
+                    event=em_event,
+                    ai_member=member,
+                    defaults={'answer': answer_text}
+                )
+                
+                # お礼のメッセージを返す
+                reply_msg = f"「{answer_text}」として回答を記録しました。\nご協力ありがとうございます。"
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
+
+        except Exception as e:
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"エラーが発生しました: {str(e)}"))
 
     try:
         handler.handle(body, signature)
