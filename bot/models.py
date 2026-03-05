@@ -142,7 +142,15 @@ class EmergencyEvent(models.Model):
     target_note_1 = models.CharField("絞り込み: 備考1", max_length=50, blank=True, null=True)
     target_note_2 = models.CharField("絞り込み: 備考2", max_length=50, blank=True, null=True)
     target_note_3 = models.CharField("絞り込み: 備考3", max_length=50, blank=True, null=True)
-    
+
+    attached_file = models.FileField(
+        "添付ファイル (PDF等)", 
+        upload_to="emergency_files/", 
+        blank=True, 
+        null=True, 
+        help_text="回覧板や詳細資料のPDFを添付できます（※選択するとLINEにURLが自動送信されます）。"
+    )
+
     target_past_event = models.ForeignKey(
         'self', on_delete=models.SET_NULL, blank=True, null=True, 
         verbose_name="絞り込み対象の過去配信", 

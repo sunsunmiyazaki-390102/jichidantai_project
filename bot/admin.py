@@ -178,8 +178,15 @@ def broadcast_emergency_message(modeladmin, request, queryset):
             if event.choice_2: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_2[:20], data=f"action=emergency&event_id={event.id}&ans=2", display_text=event.choice_2)))
             if event.choice_3: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_3[:20], data=f"action=emergency&event_id={event.id}&ans=3", display_text=event.choice_3)))
 
-            # 送信するメッセージ本体
+            # 送信するメッセージ本体を組み立てる
             message_text = f"【{event.title}】\n\n{event.message_body}"
+            
+            # 【新規追加】もしPDF等のファイルが添付されていたら、URLを自動生成して文章の下にくっつける
+            if event.attached_file:
+                # request.build_absolute_uri を使うことで、「https://jichidantai.jp/media/...」という完璧なURLを自動で作ってくれます
+                file_url = request.build_absolute_uri(event.attached_file.url)
+                message_text += f"\n\n📎 添付ファイル（詳細資料）はこちら:\n{file_url}"
+                
             if items:
                 message = TextSendMessage(text=message_text, quick_reply=QuickReply(items=items))
             else:
