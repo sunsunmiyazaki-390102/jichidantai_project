@@ -165,13 +165,13 @@ def broadcast_emergency_message(modeladmin, request, queryset):
             continue
 
         politician = event.politician
-        if not politician.line_channel_access_token:
+        if not politician.line_access_token:
             messages.error(request, f'エラー：{politician} のLINEアクセストークンが設定されていないため送信できません。')
             continue
 
         try:
             # 団体ごとのLINE Botアカウントとして接続
-            line_bot_api = LineBotApi(politician.line_channel_access_token)
+            line_bot_api = LineBotApi(politician.line_access_token)
 
             # クイックリプライ（画面下部に出るタップボタン）を作成
             items = []
