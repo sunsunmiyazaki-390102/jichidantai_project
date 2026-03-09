@@ -1,0 +1,42 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div style="padding: 20px; background-color: #fdfdfd; border: 1px solid #ddd; border-radius: 5px;">
+    <h1 style="color: #d9534f; border-bottom: 2px solid #d9534f; padding-bottom: 10px;">⚠️ 送信対象者の最終確認</h1>
+    <p style="font-size: 16px;">以下の内容でLINE送信を実行します。よろしいですか？<br><strong>※まだ送信は完了していません。</strong></p>
+
+    <form action="" method="post">
+        {% csrf_token %}
+        {% for event_data in preview_data %}
+            <div style="margin-top: 20px; padding: 15px; background-color: #fff; border: 1px solid #ccc; border-radius: 5px;">
+                <h2 style="margin-top: 0; color: #333;">【配信タイトル】 {{ event_data.event.title }}</h2>
+                
+                <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                    <tr>
+                        <th style="text-align: left; width: 200px; padding: 10px; background-color: #f5f5f5; border: 1px solid #ddd;">送信予定人数</th>
+                        <td style="padding: 10px; border: 1px solid #ddd;">
+                            <strong style="font-size: 18px; color: #d9534f;">{{ event_data.target_count }} 名</strong>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th style="text-align: left; padding: 10px; background-color: #f5f5f5; border: 1px solid #ddd;">送信対象者（抜粋）</th>
+                        <td style="padding: 10px; border: 1px solid #ddd; line-height: 1.6;">
+                            {{ event_data.target_names }}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        {% endfor %}
+
+        <div style="margin-top: 30px;">
+            {% for obj in queryset %}
+                <input type="hidden" name="_selected_action" value="{{ obj.pk }}" />
+            {% endfor %}
+            <input type="hidden" name="action" value="broadcast_emergency_message" />
+            <input type="hidden" name="apply" value="1" />
+            
+            <input type="submit" value="はい、この対象者に正式に送信する" style="font-size: 16px; font-weight: bold; padding: 12px 24px; background-color: #d9534f; color: white; border: none; border-radius: 4px; cursor: pointer;" />
+            <a href="#" onclick="window.history.back(); return false;" style="margin-left: 20px; font-size: 16px; color: #666; text-decoration: underline;">キャンセルして戻る</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -7,6 +7,8 @@ from import_export.widgets import DateWidget
 from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse
 from linebot import LineBotApi
 from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, PostbackAction
+from django.shortcuts import render
+from django.contrib.admin import helpers
 
 # ==========================================
 # 🛡️ 運営側の防衛的措置：テナント分離用・基底クラス
@@ -158,98 +160,116 @@ class EmergencyResponseInline(admin.TabularInline):
 
 @admin.action(description="選択した配信をLINEで一斉（または絞り込み）送信する")
 def broadcast_emergency_message(modeladmin, request, queryset):
-    """一覧画面から選択したイベントをLINEへ送信するアクション（セグメント配信対応版）"""
+    """一覧画面から選択したイベントをLINEへ送信するアクション（中間確認画面付き）"""
+    
+    # ==========================================
+    # ▼ [第2段階] 「はい、正式に送信する」が押された後の処理
+    # ==========================================
+    if 'apply' in request.POST:
+        for event in queryset:
+            if not event.is_active: continue
+            politician = event.politician
+            try:
+                line_bot_api = LineBotApi(politician.line_access_token)
+                items = []
+                if event.choice_1: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_1[:20], data=f"action=emergency&event_id={event.id}&ans=1", display_text=event.choice_1)))
+                if event.choice_2: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_2[:20], data=f"action=emergency&event_id={event.id}&ans=2", display_text=event.choice_2)))
+                if event.choice_3: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_3[:20], data=f"action=emergency&event_id={event.id}&ans=3", display_text=event.choice_3)))
+
+                message_text = f"【{event.title}】\n\n{event.message_body}"
+                if event.attached_file:
+                    file_url = request.build_absolute_uri(event.attached_file.url)
+                    message_text += f"\n\n📎 添付ファイル（詳細資料）はこちら:\n{file_url}"
+
+                if items: message = TextSendMessage(text=message_text, quick_reply=QuickReply(items=items))
+                else: message = TextSendMessage(text=message_text)
+
+                target_line_user_ids = set()
+                if event.target_past_event and event.target_past_answer:
+                    for r in EmergencyResponse.objects.filter(event=event.target_past_event, answer=event.target_past_answer):
+                        if r.ai_member and r.ai_member.line_user_id: target_line_user_ids.add(r.ai_member.line_user_id)
+                elif event.target_group_1 or event.target_group_2 or event.target_group_3 or event.target_note_1 or event.target_note_2 or event.target_note_3:
+                    from members.models import TenantMemberProfile
+                    filters = {'politician': politician}
+                    if event.target_group_1: filters['group_1'] = event.target_group_1
+                    if event.target_group_2: filters['group_2'] = event.target_group_2
+                    if event.target_group_3: filters['group_3'] = event.target_group_3
+                    if event.target_note_1: filters['note_1'] = event.target_note_1
+                    if event.target_note_2: filters['note_2'] = event.target_note_2
+                    if event.target_note_3: filters['note_3'] = event.target_note_3
+                    for p in TenantMemberProfile.objects.filter(**filters).exclude(ai_member__isnull=True):
+                        if p.ai_member and p.ai_member.line_user_id: target_line_user_ids.add(p.ai_member.line_user_id)
+                else:
+                    from members.models import AiMember
+                    for m in AiMember.objects.filter(politician=politician).exclude(line_user_id__isnull=True):
+                        target_line_user_ids.add(m.line_user_id)
+
+                target_list = list(target_line_user_ids)
+                if target_list:
+                    for i in range(0, len(target_list), 500):
+                        line_bot_api.multicast(target_list[i:i + 500], message)
+                    messages.success(request, f'「{event.title}」を {len(target_list)} 名に正式に送信しました！')
+            except Exception as e:
+                messages.error(request, f'「{event.title}」の送信中にエラーが発生しました: {e}')
+        return None # 完了したら元の画面に戻る
+
+    # ==========================================
+    # ▼ [第1段階] Runを押した直後の「プレビュー（確認）画面」を作る処理
+    # ==========================================
+    preview_data = []
     for event in queryset:
         if not event.is_active:
-            messages.warning(request, f'「{event.title}」は受付中ではないため送信をスキップしました。')
+            messages.warning(request, f'「{event.title}」は受付中ではないため除外しました。')
             continue
-
-        politician = event.politician
-        if not politician.line_access_token: # ※前回修正した変数名（line_access_token等）に合わせてください
-            messages.error(request, f'エラー：{politician} のLINEアクセストークンが設定されていないため送信できません。')
-            continue
-
-        try:
-            line_bot_api = LineBotApi(politician.line_access_token)
-
-            # クイックリプライ（ボタン）を作成
-            items = []
-            if event.choice_1: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_1[:20], data=f"action=emergency&event_id={event.id}&ans=1", display_text=event.choice_1)))
-            if event.choice_2: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_2[:20], data=f"action=emergency&event_id={event.id}&ans=2", display_text=event.choice_2)))
-            if event.choice_3: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_3[:20], data=f"action=emergency&event_id={event.id}&ans=3", display_text=event.choice_3)))
-
-            # 送信するメッセージ本体を組み立てる
-            message_text = f"【{event.title}】\n\n{event.message_body}"
             
-            # 【新規追加】もしPDF等のファイルが添付されていたら、URLを自動生成して文章の下にくっつける
-            if event.attached_file:
-                # request.build_absolute_uri を使うことで、「https://jichidantai.jp/media/...」という完璧なURLを自動で作ってくれます
-                file_url = request.build_absolute_uri(event.attached_file.url)
-                message_text += f"\n\n📎 添付ファイル（詳細資料）はこちら:\n{file_url}"
-                
-            if items:
-                message = TextSendMessage(text=message_text, quick_reply=QuickReply(items=items))
-            else:
-                message = TextSendMessage(text=message_text) # ボタンなしの単なるお知らせも送れるように改善
+        politician = event.politician
+        target_members = set() # AiMemberを入れる箱
 
-            # ==========================================
-            # ▼ 送信対象者（LINE ID）のリストアップ処理
-            # ==========================================
-            target_line_user_ids = set() # 重複を防ぐための箱
+        # 誰に送られるか事前にリストアップする
+        if event.target_past_event and event.target_past_answer:
+            for r in EmergencyResponse.objects.filter(event=event.target_past_event, answer=event.target_past_answer):
+                if r.ai_member: target_members.add(r.ai_member)
+        elif event.target_group_1 or event.target_group_2 or event.target_group_3 or event.target_note_1 or event.target_note_2 or event.target_note_3:
+            from members.models import TenantMemberProfile
+            filters = {'politician': politician}
+            if event.target_group_1: filters['group_1'] = event.target_group_1
+            if event.target_group_2: filters['group_2'] = event.target_group_2
+            if event.target_group_3: filters['group_3'] = event.target_group_3
+            if event.target_note_1: filters['note_1'] = event.target_note_1
+            if event.target_note_2: filters['note_2'] = event.target_note_2
+            if event.target_note_3: filters['note_3'] = event.target_note_3
+            for p in TenantMemberProfile.objects.filter(**filters).exclude(ai_member__isnull=True):
+                if p.ai_member: target_members.add(p.ai_member)
+        else:
+            from members.models import AiMember
+            for m in AiMember.objects.filter(politician=politician).exclude(line_user_id__isnull=True):
+                target_members.add(m)
 
-            if event.target_past_event and event.target_past_answer:
-                # 【条件1】過去のイベントで特定の回答（「参加する」など）をした人を抽出
-                responses = EmergencyResponse.objects.filter(event=event.target_past_event, answer=event.target_past_answer)
-                for r in responses:
-                    if r.ai_member and r.ai_member.line_user_id:
-                        target_line_user_ids.add(r.ai_member.line_user_id)
+        # プレビュー用の名前リストを作る（最大30人まで表示）
+        target_names = [m.real_name or m.line_display_name or "名無し" for m in target_members]
+        display_names = ", ".join(target_names[:30])
+        if len(target_names) > 30:
+            display_names += f" ...他 {len(target_names) - 30} 名"
+        if not display_names:
+            display_names = "（対象者が見つかりません。条件を見直してください）"
 
-            elif event.target_group_1 or event.target_group_2 or event.target_group_3 or event.target_note_1 or event.target_note_2 or event.target_note_3:
-                # 【条件2】名簿の項目（6つの箱）で絞り込む（AND検索）
-                from members.models import TenantMemberProfile
-                
-                # 入力された箱だけを条件に追加する「動的フィルター」を作成
-                filters = {'politician': politician}
-                if event.target_group_1: filters['group_1'] = event.target_group_1
-                if event.target_group_2: filters['group_2'] = event.target_group_2
-                if event.target_group_3: filters['group_3'] = event.target_group_3
-                if event.target_note_1: filters['note_1'] = event.target_note_1
-                if event.target_note_2: filters['note_2'] = event.target_note_2
-                if event.target_note_3: filters['note_3'] = event.target_note_3
+        preview_data.append({
+            'event': event,
+            'target_count': len(target_members),
+            'target_names': display_names,
+        })
 
-                # 組み立てた条件(**filters)を使って名簿を検索！
-                profiles = TenantMemberProfile.objects.filter(**filters).exclude(ai_member__isnull=True)
-                for p in profiles:
-                    if p.ai_member and p.ai_member.line_user_id:
-                        target_line_user_ids.add(p.ai_member.line_user_id)
+    if not preview_data: return None
 
-            else:
-                # 【条件なし】自団体のLINE連携済みユーザー全員を抽出
-                from members.models import AiMember
-                members = AiMember.objects.filter(politician=politician).exclude(line_user_id__isnull=True)
-                for m in members:
-                    target_line_user_ids.add(m.line_user_id)
-
-            # リスト化
-            target_list = list(target_line_user_ids)
-
-            if not target_list:
-                messages.warning(request, f'「{event.title}」の送信対象者が見つかりませんでした。')
-                continue
-
-            # ==========================================
-            # ▼ 狙い撃ち送信（マルチキャスト）の実行
-            # ==========================================
-            # LINEの仕様で1回に500人までしか送れないため、500人ずつに分割して送る安全処理
-            chunk_size = 500
-            for i in range(0, len(target_list), chunk_size):
-                chunk = target_list[i:i + chunk_size]
-                line_bot_api.multicast(chunk, message)
-                
-            messages.success(request, f'「{event.title}」を {len(target_list)} 名に送信しました！')
-
-        except Exception as e:
-            messages.error(request, f'「{event.title}」の送信中にエラーが発生しました: {e}')
+    # 確認画面（HTML）を呼び出して表示する
+    context = modeladmin.admin_site.each_context(request)
+    context.update({
+        'title': '【重要】送信対象者の確認',
+        'queryset': queryset,
+        'preview_data': preview_data,
+        'action_checkbox_name': helpers.ACTION_CHECKBOX_NAME,
+    })
+    return render(request, 'admin/broadcast_confirm.html', context)
 
 @admin.register(EmergencyEvent)
 class EmergencyEventAdmin(admin.ModelAdmin):
