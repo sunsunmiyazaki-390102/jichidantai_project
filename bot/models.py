@@ -15,6 +15,18 @@ class Politician(models.Model):
     gomi_municipality = models.CharField("ゴミ収集: 市町村", max_length=50, blank=True, null=True, help_text="例: 宮崎市")
     gomi_district = models.CharField("ゴミ収集: 地区", max_length=50, blank=True, null=True, help_text="例: 北B地区")
 
+    # ▼ 今回追記する「市町村コード」
+    city_code = models.CharField(
+        "所属市町村コード", max_length=20, blank=True, null=True, 
+        help_text="行政が横断管理するためのコード（例：宮崎市なら 45201 など）"
+    ) 
+
+    # ▼ 今回追記する「地区・町名コード」
+    district_code = models.CharField(
+        "所属地区・町名コード", max_length=50, blank=True, null=True, 
+        help_text="市町村内のさらに細かいエリアコード（例：吉村町なら yoshimura など）"
+    )       
+
     # --- [追加] テナント管理者（マルチテナント分離用） ---
     admin_users = models.ManyToManyField(
         User, 
@@ -204,4 +216,45 @@ class EmergencyResponse(models.Model):
 
     def __str__(self):
         return f"{self.ai_member.line_display_name} -> {self.answer}"
+
+# ==========================================
+# ▼ ここから「自治体管理者」用の拡張プロフィールを追加
+# ==========================================
+class CityAdminProfile(models.Model):
+    """
+    市役所の防災担当者などのアカウントに付与するプロフィール。
+    このコードと一致する Politician（自治会）だけを横断管理できるようにする。
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, verbose_name="自治体管理者（システムユーザー）")
+    city_code = models.CharField("管轄する市町村コード", max_length=20, help_text="例：45201（宮崎市）")
+    city_name = models.CharField("自治体名", max_length=50, help_text="例：宮崎市")
+
+    def __str__(self):
+        return f"{self.city_name} 防災担当 ({self.user.username})"
+
+# ==========================================
+# ▼ 第2フェーズ：自治体管理者用の「横断」一斉配信モデル
+# ==========================================
+class CityEmergencyEvent(models.Model):
+    """自治体（市役所）が、管轄する複数の自治会へ一気に一斉送信するための専用イベント"""
+    city_admin = models.ForeignKey(CityAdminProfile, on_delete=models.CASCADE, verbose_name="作成者（市町村担当者）")
+    title = models.CharField("タイトル（件名）", max_length=100)
+    message_body = models.TextField("メッセージ本文")
+    
+    target_district_code = models.CharField(
+        "絞り込み対象の町・字コード", max_length=50, blank=True, null=True,
+        help_text="特定の地区のみに送る場合に入力（例：yoshimura）。空欄なら管轄内すべての自治会へ一斉送信されます。"
+    )
+    
+    # 添付ファイル機能（デジタル回覧板）も行政が使えるように標準装備
+    attached_file = models.FileField(
+        "添付ファイル (PDF等)", upload_to=get_safe_filename, blank=True, null=True,
+        help_text="避難所の地図などのPDFを添付できます。"
+    )
+    
+    is_active = models.BooleanField("受付中（有効）", default=True)
+    created_at = models.DateTimeField("作成日時", auto_now_add=True)
+
+    def __str__(self):
+        return f"【市町村横断】{self.title} ({self.city_admin.city_name})"
         

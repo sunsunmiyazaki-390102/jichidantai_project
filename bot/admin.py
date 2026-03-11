@@ -4,7 +4,7 @@ from import_export.admin import ImportExportModelAdmin
 from import_export.widgets import DateWidget
 
 # 古いGarbageScheduleは削除し、GarbageCalendarを含めてインポートします
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityAdminProfile, CityEmergencyEvent
 from linebot import LineBotApi
 from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, PostbackAction
 from django.shortcuts import render
@@ -48,7 +48,7 @@ class CourseContentInline(admin.StackedInline):
 # ==========================================
 @admin.register(Politician)
 class PoliticianAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug','gomi_municipality', 'gomi_district', 'has_api_key')
+    list_display = ('name', 'slug', 'city_code', 'district_code', 'gomi_municipality', 'gomi_district', 'has_api_key')
     inlines = [CourseAssignmentInline]
     
     # 【防衛的仕様】誤操作による権限削除を防ぐための左右分割UI
@@ -56,7 +56,7 @@ class PoliticianAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('基本情報・システム権限', {
-            'fields': ('name', 'slug', 'admin_users') # ← admin_users を追加
+            'fields': ('name', 'slug', 'city_code', 'district_code', 'admin_users') # ← admin_users を追加
         }),
         ('LINE連携設定', {'fields': ('line_channel_secret', 'line_access_token')}),
         ('地域設定', {'fields': ('gomi_municipality', 'gomi_district')}),
@@ -319,3 +319,122 @@ class EmergencyResponseAdmin(ImportExportModelAdmin):
         if request.user.is_superuser:
             return qs
         return qs.filter(event__politician__admin_users=request.user).distinct()
+
+@admin.register(CityAdminProfile)
+class CityAdminProfileAdmin(admin.ModelAdmin):
+    list_display = ('city_name', 'city_code', 'user')
+
+# ==========================================
+# ▼ 第2フェーズ：行政による「全自治会・横断送信」システム
+# ==========================================
+@admin.action(description="選択した配信を管轄内の全自治会へ横断送信する")
+def broadcast_city_emergency_message(modeladmin, request, queryset):
+    """市役所担当者が複数自治会をまたいで一斉送信するアクション（確認画面付き）"""
+
+    # ==========================================
+    # ▼ [第2段階] 「はい、正式に送信する」が押された後の処理
+    # ==========================================
+    if 'apply' in request.POST:
+        for event in queryset:
+            if not event.is_active: continue
+
+            # ① 対象となる自治会（Politician）を市町村コードでかき集める
+            target_politicians = Politician.objects.filter(city_code=event.city_admin.city_code).exclude(line_access_token__isnull=True).exclude(line_access_token__exact='')
+            
+            # ② もし「地区コード」が指定されていれば、さらに絞り込む（前方一致も可能）
+            if event.target_district_code:
+                target_politicians = target_politicians.filter(district_code__startswith=event.target_district_code)
+
+            total_sent_count = 0
+            success_org_count = 0
+
+            # ③ 行政用のメッセージ本体を組み立てる
+            message_text = f"【{event.city_admin.city_name}からの重要なお知らせ】\n{event.title}\n\n{event.message_body}"
+            if event.attached_file:
+                file_url = request.build_absolute_uri(event.attached_file.url)
+                message_text += f"\n\n📎 詳細資料（PDF等）:\n{file_url}"
+
+            message = TextSendMessage(text=message_text)
+
+            # ④ 集めた自治会の数だけ、Botのトークンを持ち替えて送信を繰り返す神業！
+            for politician in target_politicians:
+                try:
+                    line_bot_api = LineBotApi(politician.line_access_token)
+
+                    # この自治会に所属するLINE連携済みユーザーを取得
+                    from members.models import AiMember
+                    members = AiMember.objects.filter(politician=politician).exclude(line_user_id__isnull=True)
+                    target_list = [m.line_user_id for m in members]
+
+                    if target_list:
+                        chunk_size = 500
+                        for i in range(0, len(target_list), chunk_size):
+                            chunk = target_list[i:i + chunk_size]
+                            line_bot_api.multicast(chunk, message)
+
+                        total_sent_count += len(target_list)
+                        success_org_count += 1
+
+                except Exception as e:
+                    messages.error(request, f'【{politician.name}】での送信中にエラーが発生しました: {e}')
+
+            messages.success(request, f'「{event.title}」を {success_org_count}団体、計 {total_sent_count} 名に横断送信しました！')
+        return None
+
+    # ==========================================
+    # ▼ [第1段階] プレビュー画面の作成（前回の画面をそのまま再利用します！）
+    # ==========================================
+    preview_data = []
+    for event in queryset:
+        if not event.is_active: continue
+
+        target_politicians = Politician.objects.filter(city_code=event.city_admin.city_code)
+        if event.target_district_code:
+            target_politicians = target_politicians.filter(district_code__startswith=event.target_district_code)
+
+        from members.models import AiMember
+        target_members = AiMember.objects.filter(politician__in=target_politicians).exclude(line_user_id__isnull=True)
+
+        # 誰に送られるかではなく「どの自治会に送られるか」を抽出して画面に出す
+        org_names = [p.name for p in target_politicians]
+        org_display = ", ".join(org_names)
+        if not org_display: org_display = "該当する自治会が見つかりません。コードを確認してください。"
+
+        preview_data.append({
+            'event': event,
+            'target_count': target_members.count(),
+            # 既存のHTML（target_names）をハックして、自治会名一覧を表示させます
+            'target_names': f"【送信対象の自治会】\n{org_display}", 
+        })
+
+    if not preview_data: return None
+
+    context = modeladmin.admin_site.each_context(request)
+    context.update({
+        'title': '【重要】市町村・横断送信の最終確認',
+        'queryset': queryset,
+        'preview_data': preview_data,
+        'action_checkbox_name': helpers.ACTION_CHECKBOX_NAME,
+    })
+    return render(request, 'admin/broadcast_confirm.html', context)
+
+@admin.register(CityEmergencyEvent)
+class CityEmergencyEventAdmin(admin.ModelAdmin):
+    """行政がメッセージを作成・管理するための画面設定"""
+    list_display = ('title', 'city_admin', 'target_district_code', 'is_active', 'created_at')
+    list_filter = ('city_admin', 'is_active')
+    actions = [broadcast_city_emergency_message]
+
+    def get_queryset(self, request):
+        """【防衛策】市役所担当者は、自分の市役所が作った配信だけを見れる"""
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(city_admin__user=request.user)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """【防衛策】作成者を自分（市役所）に固定する"""
+        if db_field.name == "city_admin" and not request.user.is_superuser:
+            kwargs["queryset"] = CityAdminProfile.objects.filter(user=request.user)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    
