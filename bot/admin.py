@@ -3,8 +3,7 @@ from import_export import resources, fields
 from import_export.admin import ImportExportModelAdmin
 from import_export.widgets import DateWidget
 
-# 古いGarbageScheduleは削除し、GarbageCalendarを含めてインポートします
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityAdminProfile, CityEmergencyEvent
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityAdminProfile, CityEmergencyEvent, CityEmergencyResponse
 from linebot import LineBotApi
 from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, PostbackAction
 from django.shortcuts import render
@@ -349,13 +348,25 @@ def broadcast_city_emergency_message(modeladmin, request, queryset):
             total_sent_count = 0
             success_org_count = 0
 
+    # ==========================================
+    # （修正後）ボタンを組み立てる処理を挟み込みます！
+    # ==========================================
             # ③ 行政用のメッセージ本体を組み立てる
             message_text = f"【{event.city_admin.city_name}からの重要なお知らせ】\n{event.title}\n\n{event.message_body}"
             if event.attached_file:
                 file_url = request.build_absolute_uri(event.attached_file.url)
                 message_text += f"\n\n📎 詳細資料（PDF等）:\n{file_url}"
 
-            message = TextSendMessage(text=message_text)
+            # ボタン（QuickReply）の組み立て
+            items = []
+            if event.choice_1: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_1[:20], data=f"action=city_emergency&event_id={event.id}&ans=1", display_text=event.choice_1)))
+            if event.choice_2: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_2[:20], data=f"action=city_emergency&event_id={event.id}&ans=2", display_text=event.choice_2)))
+            if event.choice_3: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_3[:20], data=f"action=city_emergency&event_id={event.id}&ans=3", display_text=event.choice_3)))
+
+            if items: 
+                message = TextSendMessage(text=message_text, quick_reply=QuickReply(items=items))
+            else: 
+                message = TextSendMessage(text=message_text)
 
             # ④ 集めた自治会の数だけ、Botのトークンを持ち替えて送信を繰り返す神業！
             for politician in target_politicians:
@@ -420,12 +431,41 @@ def broadcast_city_emergency_message(modeladmin, request, queryset):
     })
     return render(request, 'admin/broadcast_confirm.html', context)
 
+class CityEmergencyResponseInline(admin.TabularInline):
+    """行政の配信作成画面の中に、住民の回答結果をリアルタイムで表示するパネル"""
+    model = CityEmergencyResponse
+    extra = 0
+    readonly_fields = ('ai_member', 'answer', 'replied_at')
+    can_delete = False
+    def has_add_permission(self, request, obj):
+        return False
+
 @admin.register(CityEmergencyEvent)
 class CityEmergencyEventAdmin(admin.ModelAdmin):
     """行政がメッセージを作成・管理するための画面設定"""
     list_display = ('title', 'city_admin', 'target_district_code', 'is_active', 'created_at')
     list_filter = ('city_admin', 'is_active')
     actions = [broadcast_city_emergency_message]
+    
+    # 画面の中に回答結果のパネルを埋め込む
+    inlines = [CityEmergencyResponseInline]
+
+    # 入力画面のレイアウトを整える（選択肢の枠を追加）
+    fieldsets = (
+        ('基本設定', {
+            'fields': ('city_admin', 'title', 'message_body', 'attached_file')
+        }),
+        ('対象エリアの絞り込み', {
+            'fields': ('target_district_code',)
+        }),
+        ('回答ボタン（アンケート・安否確認）', {
+            'fields': ('choice_1', 'choice_2', 'choice_3'),
+            'description': '入力すると、LINEのメッセージの下にタップできる回答ボタンが表示されます。'
+        }),
+        ('ステータス', {
+            'fields': ('is_active',)
+        }),
+    )
 
     def get_queryset(self, request):
         """【防衛策】市役所担当者は、自分の市役所が作った配信だけを見れる"""

@@ -12,7 +12,7 @@ import time
 import re
 import traceback
 
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, GarbageCalendar, EmergencyEvent, EmergencyResponse
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityEmergencyEvent, CityEmergencyResponse
 from members.models import AiMember
 
 # 💡【削除】ここに書いてあった REGION_MAP は不要になったため完全に削除しました！
@@ -453,6 +453,36 @@ def callback(request, politician_slug):
                 
                 # お礼のメッセージを返す
                 reply_msg = f"「{answer_text}」として回答を記録しました。\nご協力ありがとうございます。"
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
+
+            elif data_dict.get('action') == 'city_emergency':
+                event_id = data_dict.get('event_id')
+                ans_num = data_dict.get('ans')
+                
+                # 行政のイベントが存在するか、受付中かを確認
+                city_event = CityEmergencyEvent.objects.filter(id=event_id).first()
+                if not city_event:
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="このアンケートは存在しないか、削除されました。"))
+                    return
+                if not city_event.is_active:
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="このアンケートの受付はすでに終了しています。"))
+                    return
+                
+                # どのボタンが押されたかを判定
+                answer_text = ""
+                if ans_num == '1': answer_text = city_event.choice_1
+                elif ans_num == '2': answer_text = city_event.choice_2
+                elif ans_num == '3': answer_text = city_event.choice_3
+                
+                # 行政用の集計データベースに記録（または上書き）する
+                CityEmergencyResponse.objects.update_or_create(
+                    event=city_event,
+                    ai_member=member,
+                    defaults={'answer': answer_text}
+                )
+                
+                # 少し丁寧なお礼のメッセージを返す
+                reply_msg = f"「{answer_text}」として回答を記録しました。\n行政からのアンケート・安否確認へのご協力ありがとうございます。"
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
 
         except Exception as e:

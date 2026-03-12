@@ -246,15 +246,38 @@ class CityEmergencyEvent(models.Model):
         help_text="特定の地区のみに送る場合に入力（例：yoshimura）。空欄なら管轄内すべての自治会へ一斉送信されます。"
     )
     
-    # 添付ファイル機能（デジタル回覧板）も行政が使えるように標準装備
     attached_file = models.FileField(
         "添付ファイル (PDF等)", upload_to=get_safe_filename, blank=True, null=True,
         help_text="避難所の地図などのPDFを添付できます。"
     )
+
+    # ▼▼▼ 新しく追加する「回答の選択肢」 ▼▼▼
+    choice_1 = models.CharField("選択肢1", max_length=20, blank=True, null=True, help_text="例: 無事です")
+    choice_2 = models.CharField("選択肢2", max_length=20, blank=True, null=True, help_text="例: 支援が必要")
+    choice_3 = models.CharField("選択肢3", max_length=20, blank=True, null=True)
+    # ▲▲▲ 追加ここまで ▲▲▲
     
     is_active = models.BooleanField("受付中（有効）", default=True)
     created_at = models.DateTimeField("作成日時", auto_now_add=True)
 
     def __str__(self):
         return f"【市町村横断】{self.title} ({self.city_admin.city_name})"
-        
+
+# ==========================================
+# ▼ 新しく追加する「行政用の回答集計箱」
+# ==========================================
+class CityEmergencyResponse(models.Model):
+    """住民が行政からの横断メッセージのボタンをタップした結果を記録する箱"""
+    event = models.ForeignKey(CityEmergencyEvent, on_delete=models.CASCADE, verbose_name="対象の市町村配信")
+    ai_member = models.ForeignKey('members.AiMember', on_delete=models.CASCADE, verbose_name="回答者")
+    answer = models.CharField("回答内容", max_length=50)
+    replied_at = models.DateTimeField("回答日時", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "市町村配信への回答"
+        verbose_name_plural = "市町村配信への回答"
+        unique_together = ('event', 'ai_member') # 1回の配信につき、1人1回だけ回答できるようにする防衛策
+
+    def __str__(self):
+        return f"{self.ai_member} -> {self.answer}"
+    
