@@ -268,6 +268,7 @@ def broadcast_emergency_message(modeladmin, request, queryset):
         'queryset': queryset,
         'preview_data': preview_data,
         'action_checkbox_name': helpers.ACTION_CHECKBOX_NAME,
+        'action_name': 'broadcast_emergency_message',
     })
     return render(request, 'admin/broadcast_confirm.html', context)
 
@@ -415,6 +416,7 @@ def broadcast_city_emergency_message(modeladmin, request, queryset):
         'queryset': queryset,
         'preview_data': preview_data,
         'action_checkbox_name': helpers.ACTION_CHECKBOX_NAME,
+        'action_name': 'broadcast_city_emergency_message',
     })
     return render(request, 'admin/broadcast_confirm.html', context)
 
