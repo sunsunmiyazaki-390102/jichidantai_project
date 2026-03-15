@@ -325,7 +325,7 @@ class CityAdminProfileAdmin(admin.ModelAdmin):
     list_display = ('city_name', 'city_code', 'user')
 
 # ==========================================
-# ▼ 第2フェーズ：行政による「全自治会・横断送信」システム
+# ▼ 第2フェーズ：行政による「全自治会・横断送信」システム（完全版）
 # ==========================================
 @admin.action(description="選択した配信を管轄内の全自治会へ横断送信する")
 def broadcast_city_emergency_message(modeladmin, request, queryset):
@@ -338,26 +338,18 @@ def broadcast_city_emergency_message(modeladmin, request, queryset):
         for event in queryset:
             if not event.is_active: continue
 
-            # ① 対象となる自治会（Politician）を市町村コードでかき集める
             target_politicians = Politician.objects.filter(city_code=event.city_admin.city_code).exclude(line_access_token__isnull=True).exclude(line_access_token__exact='')
-            
-            # ② もし「地区コード」が指定されていれば、さらに絞り込む（前方一致も可能）
             if event.target_district_code:
                 target_politicians = target_politicians.filter(district_code__startswith=event.target_district_code)
 
             total_sent_count = 0
             success_org_count = 0
 
-    # ==========================================
-    # （修正後）ボタンを組み立てる処理を挟み込みます！
-    # ==========================================
-            # ③ 行政用のメッセージ本体を組み立てる
             message_text = f"【{event.city_admin.city_name}からの重要なお知らせ】\n{event.title}\n\n{event.message_body}"
             if event.attached_file:
                 file_url = request.build_absolute_uri(event.attached_file.url)
                 message_text += f"\n\n📎 詳細資料（PDF等）:\n{file_url}"
 
-            # ボタン（QuickReply）の組み立て
             items = []
             if event.choice_1: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_1[:20], data=f"action=city_emergency&event_id={event.id}&ans=1", display_text=event.choice_1)))
             if event.choice_2: items.append(QuickReplyButton(action=PostbackAction(label=event.choice_2[:20], data=f"action=city_emergency&event_id={event.id}&ans=2", display_text=event.choice_2)))
@@ -368,18 +360,15 @@ def broadcast_city_emergency_message(modeladmin, request, queryset):
             else: 
                 message = TextSendMessage(text=message_text)
 
-            # ④ 集めた自治会の数だけ、Botのトークンを持ち替えて送信を繰り返す神業！
             for politician in target_politicians:
                 try:
                     line_bot_api = LineBotApi(politician.line_access_token)
 
-                    # この自治会に所属するLINE連携済みユーザーを取得
+                    # 1. まず、この自治会に所属するLINE連携済みユーザーを全員取得（※ここがエラーの原因でした）
                     from members.models import AiMember
-                    members = AiMember.objects.filter(politician=politician).exclude(line_user_id__isnull=True)
+                    members_qs = AiMember.objects.filter(politician=politician).exclude(line_user_id__isnull=True)
 
-                    # ==========================================
-                    # ▼▼▼ 新規追加：行政タグでの絞り込み処理 ▼▼▼
-                    # ==========================================
+                    # 2. 行政独自タグでの絞り込み処理
                     if event.target_group_1 or event.target_group_2 or event.target_group_3 or event.target_note_1 or event.target_note_2 or event.target_note_3:
                         profile_filters = {'city_admin': event.city_admin, 'ai_member__politician': politician}
                         if event.target_group_1: profile_filters['group_1'] = event.target_group_1
@@ -389,16 +378,12 @@ def broadcast_city_emergency_message(modeladmin, request, queryset):
                         if event.target_note_2: profile_filters['note_2'] = event.target_note_2
                         if event.target_note_3: profile_filters['note_3'] = event.target_note_3
 
-                        # 条件に合致する「行政プロファイル」を持つ人だけを探し出す
                         matched_profiles = CityMemberProfile.objects.filter(**profile_filters)
                         matched_member_ids = matched_profiles.values_list('ai_member_id', flat=True)
-                        
-                        # 配信対象を、その見つかった人だけに極限まで絞り込む！
                         members_qs = members_qs.filter(id__in=matched_member_ids)
-                    # ==========================================
-                    # ▲▲▲ 新規追加ここまで ▲▲▲
 
-                    target_list = [m.line_user_id for m in members]
+                    # 3. 最終的に残った人をリスト化して送信
+                    target_list = [m.line_user_id for m in members_qs]
 
                     if target_list:
                         chunk_size = 500
@@ -416,28 +401,40 @@ def broadcast_city_emergency_message(modeladmin, request, queryset):
         return None
 
     # ==========================================
-    # ▼ [第1段階] プレビュー画面の作成（前回の画面をそのまま再利用します！）
+    # ▼ [第1段階] プレビュー画面の作成（ここも独自タグでの絞り込みに対応させました！）
     # ==========================================
     preview_data = []
     for event in queryset:
         if not event.is_active: continue
 
-        target_politicians = Politician.objects.filter(city_code=event.city_admin.city_code)
+        target_politicians = Politician.objects.filter(city_code=event.city_admin.city_code).exclude(line_access_token__isnull=True).exclude(line_access_token__exact='')
         if event.target_district_code:
             target_politicians = target_politicians.filter(district_code__startswith=event.target_district_code)
 
         from members.models import AiMember
-        target_members = AiMember.objects.filter(politician__in=target_politicians).exclude(line_user_id__isnull=True)
+        members_qs = AiMember.objects.filter(politician__in=target_politicians).exclude(line_user_id__isnull=True)
 
-        # 誰に送られるかではなく「どの自治会に送られるか」を抽出して画面に出す
+        # プレビューでもタグの絞り込みを計算する
+        if event.target_group_1 or event.target_group_2 or event.target_group_3 or event.target_note_1 or event.target_note_2 or event.target_note_3:
+            profile_filters = {'city_admin': event.city_admin, 'ai_member__politician__in': target_politicians}
+            if event.target_group_1: profile_filters['group_1'] = event.target_group_1
+            if event.target_group_2: profile_filters['group_2'] = event.target_group_2
+            if event.target_group_3: profile_filters['group_3'] = event.target_group_3
+            if event.target_note_1: profile_filters['note_1'] = event.target_note_1
+            if event.target_note_2: profile_filters['note_2'] = event.target_note_2
+            if event.target_note_3: profile_filters['note_3'] = event.target_note_3
+
+            matched_profiles = CityMemberProfile.objects.filter(**profile_filters)
+            matched_member_ids = matched_profiles.values_list('ai_member_id', flat=True)
+            members_qs = members_qs.filter(id__in=matched_member_ids)
+
         org_names = [p.name for p in target_politicians]
         org_display = ", ".join(org_names)
         if not org_display: org_display = "該当する自治会が見つかりません。コードを確認してください。"
 
         preview_data.append({
             'event': event,
-            'target_count': target_members.count(),
-            # 既存のHTML（target_names）をハックして、自治会名一覧を表示させます
+            'target_count': members_qs.count(), # 絞り込まれた正確な人数が出るようになります
             'target_names': f"【送信対象の自治会】\n{org_display}", 
         })
 
