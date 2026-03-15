@@ -245,17 +245,24 @@ class CityEmergencyEvent(models.Model):
         "絞り込み対象の町・字コード", max_length=50, blank=True, null=True,
         help_text="特定の地区のみに送る場合に入力（例：yoshimura）。空欄なら管轄内すべての自治会へ一斉送信されます。"
     )
+
+    # ▼▼▼ 今回新しく追加する「行政独自のタグ絞り込み」 ▼▼▼
+    target_group_1 = models.CharField("絞り込み: グループ1", max_length=50, blank=True, null=True)
+    target_group_2 = models.CharField("絞り込み: グループ2", max_length=50, blank=True, null=True)
+    target_group_3 = models.CharField("絞り込み: グループ3", max_length=50, blank=True, null=True)
+    target_note_1 = models.CharField("絞り込み: 備考1", max_length=100, blank=True, null=True)
+    target_note_2 = models.CharField("絞り込み: 備考2", max_length=100, blank=True, null=True)
+    target_note_3 = models.CharField("絞り込み: 備考3", max_length=100, blank=True, null=True)
+    # ▲▲▲ 追加ここまで ▲▲▲
     
     attached_file = models.FileField(
         "添付ファイル (PDF等)", upload_to=get_safe_filename, blank=True, null=True,
         help_text="避難所の地図などのPDFを添付できます。"
     )
 
-    # ▼▼▼ 新しく追加する「回答の選択肢」 ▼▼▼
     choice_1 = models.CharField("選択肢1", max_length=20, blank=True, null=True, help_text="例: 無事です")
     choice_2 = models.CharField("選択肢2", max_length=20, blank=True, null=True, help_text="例: 支援が必要")
     choice_3 = models.CharField("選択肢3", max_length=20, blank=True, null=True)
-    # ▲▲▲ 追加ここまで ▲▲▲
     
     is_active = models.BooleanField("受付中（有効）", default=True)
     created_at = models.DateTimeField("作成日時", auto_now_add=True)
@@ -281,3 +288,27 @@ class CityEmergencyResponse(models.Model):
     def __str__(self):
         return f"{self.ai_member} -> {self.answer}"
     
+# ==========================================
+# ▼ 新しく追加する「行政専用の住民タグ箱」
+# ==========================================
+class CityMemberProfile(models.Model):
+    """市役所が各住民に対して独自にタグ付け（グループ・備考）するための専用データベース"""
+    city_admin = models.ForeignKey(CityAdminProfile, on_delete=models.CASCADE, verbose_name="管轄市町村")
+    ai_member = models.ForeignKey('members.AiMember', on_delete=models.CASCADE, verbose_name="対象住民")
+    
+    group_1 = models.CharField("グループ1", max_length=50, blank=True, null=True)
+    group_2 = models.CharField("グループ2", max_length=50, blank=True, null=True)
+    group_3 = models.CharField("グループ3", max_length=50, blank=True, null=True)
+    
+    note_1 = models.CharField("備考1", max_length=100, blank=True, null=True)
+    note_2 = models.CharField("備考2", max_length=100, blank=True, null=True)
+    note_3 = models.CharField("備考3", max_length=100, blank=True, null=True)
+
+    class Meta:
+        verbose_name = "市町村・住民プロフィール（独自タグ）"
+        verbose_name_plural = "市町村・住民プロフィール（独自タグ）"
+        unique_together = ('city_admin', 'ai_member') # 重複してタグ付けされるのを防ぐ防衛策
+
+    def __str__(self):
+        return f"{self.ai_member.real_name or '名無し'} の行政プロファイル ({self.city_admin.city_name})"
+        

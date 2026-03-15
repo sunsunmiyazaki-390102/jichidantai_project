@@ -3,7 +3,7 @@ from import_export import resources, fields
 from import_export.admin import ImportExportModelAdmin
 from import_export.widgets import DateWidget
 
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityAdminProfile, CityEmergencyEvent, CityEmergencyResponse
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityAdminProfile, CityEmergencyEvent, CityEmergencyResponse, CityMemberProfile
 from linebot import LineBotApi
 from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, PostbackAction
 from django.shortcuts import render
@@ -376,6 +376,28 @@ def broadcast_city_emergency_message(modeladmin, request, queryset):
                     # この自治会に所属するLINE連携済みユーザーを取得
                     from members.models import AiMember
                     members = AiMember.objects.filter(politician=politician).exclude(line_user_id__isnull=True)
+
+                    # ==========================================
+                    # ▼▼▼ 新規追加：行政タグでの絞り込み処理 ▼▼▼
+                    # ==========================================
+                    if event.target_group_1 or event.target_group_2 or event.target_group_3 or event.target_note_1 or event.target_note_2 or event.target_note_3:
+                        profile_filters = {'city_admin': event.city_admin, 'ai_member__politician': politician}
+                        if event.target_group_1: profile_filters['group_1'] = event.target_group_1
+                        if event.target_group_2: profile_filters['group_2'] = event.target_group_2
+                        if event.target_group_3: profile_filters['group_3'] = event.target_group_3
+                        if event.target_note_1: profile_filters['note_1'] = event.target_note_1
+                        if event.target_note_2: profile_filters['note_2'] = event.target_note_2
+                        if event.target_note_3: profile_filters['note_3'] = event.target_note_3
+
+                        # 条件に合致する「行政プロファイル」を持つ人だけを探し出す
+                        matched_profiles = CityMemberProfile.objects.filter(**profile_filters)
+                        matched_member_ids = matched_profiles.values_list('ai_member_id', flat=True)
+                        
+                        # 配信対象を、その見つかった人だけに極限まで絞り込む！
+                        members_qs = members_qs.filter(id__in=matched_member_ids)
+                    # ==========================================
+                    # ▲▲▲ 新規追加ここまで ▲▲▲
+
                     target_list = [m.line_user_id for m in members]
 
                     if target_list:
@@ -458,6 +480,10 @@ class CityEmergencyEventAdmin(admin.ModelAdmin):
         ('対象エリアの絞り込み', {
             'fields': ('target_district_code',)
         }),
+        ('行政独自タグでの絞り込み（ピンポイント配信）', {
+            'fields': ('target_group_1', 'target_group_2', 'target_group_3', 'target_note_1', 'target_note_2', 'target_note_3'),
+            'description': '※「市町村・住民プロフィール」で付けたタグと一致する人のみに配信します。'
+        }),
         ('回答ボタン（アンケート・安否確認）', {
             'fields': ('choice_1', 'choice_2', 'choice_3'),
             'description': '入力すると、LINEのメッセージの下にタップできる回答ボタンが表示されます。'
@@ -479,4 +505,51 @@ class CityEmergencyEventAdmin(admin.ModelAdmin):
         if db_field.name == "city_admin" and not request.user.is_superuser:
             kwargs["queryset"] = CityAdminProfile.objects.filter(user=request.user)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+# ==========================================
+# ▼ 第2フェーズ：行政専用の「住民タグ付け」管理画面（個人情報保護対応）
+# ==========================================
+@admin.register(CityMemberProfile)
+class CityMemberProfileAdmin(admin.ModelAdmin):
+    """市役所担当者が住民に独自タグを付ける画面。個人情報保護のため表示を極限まで絞る。"""
+    list_display = ('get_org_name', 'get_address', 'get_real_name', 'group_1', 'note_1')
+    list_filter = ('ai_member__politician', 'group_1', 'group_2')
+    search_fields = ('ai_member__real_name', 'ai_member__address')
     
+    # 【重要】数万人の住民から探せるように、虫眼鏡マークの検索窓（ポップアップ）にする
+    raw_id_fields = ('ai_member',) 
+
+    fieldsets = (
+        ('基本情報', {
+            'fields': ('city_admin', 'ai_member'),
+        }),
+        ('行政独自タグ（配信の絞り込み用）', {
+            'fields': ('group_1', 'group_2', 'group_3', 'note_1', 'note_2', 'note_3'),
+            'description': '※ここに入力したタグは、横断送信時の「絞り込み条件」として利用できます。'
+        }),
+    )
+
+    def get_org_name(self, obj):
+        return obj.ai_member.politician.name
+    get_org_name.short_description = '団体名（自治会）'
+
+    def get_address(self, obj):
+        return obj.ai_member.address or "未登録"
+    get_address.short_description = '班名・部屋番号'
+
+    def get_real_name(self, obj):
+        return obj.ai_member.real_name or "未登録"
+    get_real_name.short_description = '氏名'
+
+    def get_queryset(self, request):
+        """【防衛策】自分の管轄のプロフィールしか見られない"""
+        qs = super().get_queryset(request)
+        if request.user.is_superuser: return qs
+        return qs.filter(city_admin__user=request.user)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """【防衛策】作成者を自分（市役所）に固定する"""
+        if db_field.name == "city_admin" and not request.user.is_superuser:
+            kwargs["queryset"] = CityAdminProfile.objects.filter(user=request.user)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+        
