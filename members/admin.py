@@ -40,13 +40,15 @@ class TenantMemberProfileResource(resources.ModelResource):
         attribute='ai_member',
         widget=ForeignKeyWidget(AiMember, 'line_user_id')
     )
-    # ▼▼▼ CSVに出力・入力したい列をすべて定義します ▼▼▼
-    official_name = fields.Field(attribute='official_name', column_name='氏名')
+    # ▼▼▼ Excelに出力・入力したい列をモデルに合わせて定義します ▼▼▼
     management_id = fields.Field(attribute='management_id', column_name='管理番号')
+    official_name = fields.Field(attribute='official_name', column_name='氏名')
     
-    # 住所関連
-    zip_code = fields.Field(attribute='zip_code', column_name='郵便番号')
-    address = fields.Field(attribute='address', column_name='住所')
+    # 住所・世帯関連
+    official_address = fields.Field(attribute='official_address', column_name='住所')
+    birth_date = fields.Field(attribute='birth_date', column_name='生年月日')
+    head_of_household = fields.Field(attribute='head_of_household', column_name='世帯主名')
+    relationship = fields.Field(attribute='relationship', column_name='世帯主との続柄')
     
     # グループ関連
     group_1 = fields.Field(attribute='group_1', column_name='グループ1')
@@ -62,14 +64,14 @@ class TenantMemberProfileResource(resources.ModelResource):
     class Meta:
         model = TenantMemberProfile
         import_id_fields = ('ai_member',)
-        # ▼▼▼ CSVとして扱うフィールドを列挙します ▼▼▼
+        
+        # ▼▼▼ Excelとして扱うフィールド（出力する順番）を列挙します ▼▼▼
         fields = (
             'ai_member', 'management_id', 'official_name', 
-            'zip_code', 'address', 
+            'official_address', 'birth_date', 'head_of_household', 'relationship',
             'group_1', 'group_2', 'group_3', 
             'note_1', 'note_2', 'note_3'
         )
-        # ▲▲▲ ここまで ▲▲▲
         
         # エクスポート時の「列の並び順」を指定します
         export_order = fields
