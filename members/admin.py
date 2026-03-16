@@ -35,23 +35,44 @@ class AiMemberAdmin(admin.ModelAdmin):
 # 2. 🛡️ 運営側の防衛的措置：テナント分離型CSVインポート基盤
 # ==========================================
 class TenantMemberProfileResource(resources.ModelResource):
-    # 【修正】変数名を models.py に合わせて 'ai_member' に統一
     ai_member = fields.Field(
         column_name='LINE_ID',
         attribute='ai_member',
         widget=ForeignKeyWidget(AiMember, 'line_user_id')
     )
+    # ▼▼▼ CSVに出力・入力したい列をすべて定義します ▼▼▼
     official_name = fields.Field(attribute='official_name', column_name='氏名')
-    group_2 = fields.Field(attribute='group_2', column_name='班名')
-    
-    # 必須項目「管理番号」もフィールドとして定義しておく
     management_id = fields.Field(attribute='management_id', column_name='管理番号')
+    
+    # 住所関連
+    zip_code = fields.Field(attribute='zip_code', column_name='郵便番号')
+    address = fields.Field(attribute='address', column_name='住所')
+    
+    # グループ関連
+    group_1 = fields.Field(attribute='group_1', column_name='グループ1')
+    group_2 = fields.Field(attribute='group_2', column_name='グループ2（班名）')
+    group_3 = fields.Field(attribute='group_3', column_name='グループ3')
+    
+    # 備考関連
+    note_1 = fields.Field(attribute='note_1', column_name='備考1')
+    note_2 = fields.Field(attribute='note_2', column_name='備考2')
+    note_3 = fields.Field(attribute='note_3', column_name='備考3')
+    # ▲▲▲ ここまで ▲▲▲
 
     class Meta:
         model = TenantMemberProfile
-        # 【修正】判定基準も 'ai_member' に変更
         import_id_fields = ('ai_member',)
-        fields = ('ai_member', 'official_name', 'group_2', 'management_id')
+        # ▼▼▼ CSVとして扱うフィールドを列挙します ▼▼▼
+        fields = (
+            'ai_member', 'management_id', 'official_name', 
+            'zip_code', 'address', 
+            'group_1', 'group_2', 'group_3', 
+            'note_1', 'note_2', 'note_3'
+        )
+        # ▲▲▲ ここまで ▲▲▲
+        
+        # エクスポート時の「列の並び順」を指定します
+        export_order = fields
         skip_unchanged = True
 
     def __init__(self, **kwargs):
@@ -66,25 +87,29 @@ class TenantMemberProfileResource(resources.ModelResource):
             return
 
         # 1. ログイン中の一般管理者が担当する自治会を特定
+        tenant = None # 初期化
         if self.request and not self.request.user.is_superuser:
             tenant = Politician.objects.filter(admin_users=self.request.user).first()
             if not tenant:
                 raise ValueError("操作エラー：あなたの管理アカウントに紐づく自治会が存在しません。")
+        elif self.request and self.request.user.is_superuser:
+            # スーパーユーザーの場合は、CSVから直接インポートできるようにテナントチェックを少し緩める
+            pass
         else:
             raise ValueError("防衛的措置：インポートの事故を防ぐため、CSVインポートは必ず『各自治会の管理者アカウント』でログインして実行してください。")
 
         # 2. AiMember（LINEアカウント）が未登録なら裏で自動生成する
-        ai_member_obj, created = AiMember.objects.get_or_create(
-            line_user_id=line_user_id,
-            defaults={'politician': tenant}
-        )
+        if tenant:
+            ai_member_obj, created = AiMember.objects.get_or_create(
+                line_user_id=line_user_id,
+                defaults={'politician': tenant}
+            )
 
-        # 3. テナント越境エラーの完全遮断
-        if ai_member_obj.politician and ai_member_obj.politician != tenant:
-            raise ValueError(f"重大エラー：LINE ID({line_user_id}) は既に他団体に所属しているためインポートを遮断しました。")
+            # 3. テナント越境エラーの完全遮断
+            if ai_member_obj.politician and ai_member_obj.politician != tenant:
+                raise ValueError(f"重大エラー：LINE ID({line_user_id}) は既に他団体に所属しているためインポートを遮断しました。")
 
         # 4. 【シビアな防衛策】必須項目「管理番号」がCSVに無い場合の自動補完
-        # データベースエラーでインポートが止まるのを防ぐため、LINE_IDの先頭8文字を使って仮の管理番号を自動生成する
         if not row.get('管理番号'):
             row['管理番号'] = f"auto_{line_user_id[:8]}"
 
@@ -93,7 +118,7 @@ class TenantMemberProfileResource(resources.ModelResource):
         if self.request and not self.request.user.is_superuser:
             tenant = Politician.objects.filter(admin_users=self.request.user).first()
             instance.politician = tenant
-            
+
 # ==========================================
 # 3. 名簿プロフィール (TenantMemberProfile) の管理画面
 # ==========================================
