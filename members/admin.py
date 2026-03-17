@@ -115,6 +115,11 @@ class TenantMemberProfileResource(resources.ModelResource):
         if not row.get('管理番号'):
             row['管理番号'] = f"auto_{line_user_id[:8]}"
 
+        # ▼▼▼ 新規追加：エクセルの「空白セル」が日付エラーを起こすのを防ぐ ▼▼▼
+        raw_date = row.get('生年月日')
+        if raw_date == "" or str(raw_date).strip() == "":
+            row['生年月日'] = None
+
     def before_save_instance(self, instance, row, **kwargs):
         """プロフィール本体が保存される直前に、所属団体を強制上書き"""
         if self.request and not self.request.user.is_superuser:
