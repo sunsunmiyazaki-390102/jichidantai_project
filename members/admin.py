@@ -145,11 +145,23 @@ class TenantMemberProfileResource(resources.ModelResource):
 @admin.register(TenantMemberProfile)
 class TenantMemberProfileAdmin(ImportExportModelAdmin):
     resource_class = TenantMemberProfileResource
+
+    # ▼▼▼ 改善案1＆3：一覧画面の「Excel化」と「検索強化」 ▼▼▼
     
-    # 【修正】list_display も 'ai_member' に変更し復活
-    list_display = ('management_id', 'official_name', 'politician', 'ai_member', 'group_2')
-    search_fields = ('official_name', 'management_id')
-    list_filter = ('politician',)
+    # ① 一覧表に表示する項目（新しく作った電話番号も出します）
+    list_display = ('management_id', 'official_name', 'phone_number', 'group_1', 'group_2', 'note_1')
+    
+    # ② クリックすると「詳細画面（個別の入力画面）」に移動できる項目
+    list_display_links = ('management_id', 'official_name')
+    
+    # ③ 一覧画面の表のまま、直接文字を打ち込んで編集できる項目（★ここがExcel化の魔法です）
+    list_editable = ('group_1', 'group_2', 'note_1')
+    
+    # ④ 虫眼鏡の検索窓で探せる項目（電話番号や住所でも一発検索できるように強化！）
+    search_fields = ('official_name', 'management_id', 'phone_number', 'official_address')
+    
+    # ⑤ 画面右側に表示される「絞り込みフィルター」（役員だけ、1班だけ、などを一発で抽出）
+    list_filter = ('politician', 'group_1', 'group_2')
 
     def get_import_resource_kwargs(self, request, *args, **kwargs):
         kwargs = super().get_import_resource_kwargs(request, *args, **kwargs)
