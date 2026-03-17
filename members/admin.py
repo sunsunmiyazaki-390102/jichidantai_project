@@ -163,6 +163,28 @@ class TenantMemberProfileAdmin(ImportExportModelAdmin):
     # ⑤ 画面右側に表示される「絞り込みフィルター」（役員だけ、1班だけ、などを一発で抽出）
     list_filter = ('politician', 'group_1', 'group_2')
 
+    # ▼▼▼ 改善案2：詳細画面の「ブロック分け（整理整頓）」 ▼▼▼
+    fieldsets = (
+        ('システム連携情報', {
+            'fields': ('politician', 'ai_member', 'management_id'),
+            'description': '※システム管理用のデータです。LINEアカウントとの紐づけを行います。'
+        }),
+        ('住民の基本情報', {
+            'fields': (
+                'official_name', 'phone_number', 'official_address', 
+                'birth_date', 'head_of_household', 'relationship'
+            ),
+        }),
+        ('自治会独自のタグ（グループ・備考）', {
+            # ★裏技：()でさらに囲むと、画面上で項目が「横並び」に配置されて超スッキリします！
+            'fields': (
+                ('group_1', 'group_2', 'group_3'),
+                ('note_1', 'note_2', 'note_3')
+            ),
+            'description': '※名簿の絞り込みや、役員の役割管理に使います。'
+        }),
+    )
+
     def get_import_resource_kwargs(self, request, *args, **kwargs):
         kwargs = super().get_import_resource_kwargs(request, *args, **kwargs)
         kwargs.update({"request": request})
