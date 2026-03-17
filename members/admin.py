@@ -5,6 +5,7 @@ from import_export.widgets import ForeignKeyWidget, CharWidget
 
 from .models import AiMember, TenantMemberProfile
 from bot.models import Politician
+from datetime import date
 
 # ==========================================
 # 1. AiMember (LINEアカウント) の管理画面
@@ -149,7 +150,7 @@ class TenantMemberProfileAdmin(ImportExportModelAdmin):
     # ▼▼▼ 改善案1＆3：一覧画面の「Excel化」と「検索強化」 ▼▼▼
     
     # ① 一覧表に表示する項目（新しく作った電話番号も出します）
-    list_display = ('management_id', 'official_name', 'phone_number', 'group_1', 'group_2', 'note_1')
+    list_display = ('management_id', 'official_name', 'get_age', 'phone_number', 'group_1', 'group_2', 'note_1')
     
     # ② クリックすると「詳細画面（個別の入力画面）」に移動できる項目
     list_display_links = ('management_id', 'official_name')
@@ -184,6 +185,17 @@ class TenantMemberProfileAdmin(ImportExportModelAdmin):
             'description': '※名簿の絞り込みや、役員の役割管理に使います。'
         }),
     )
+
+    # ▼▼▼ 新規追加：生年月日から「現在の年齢」を自動計算する魔法 ▼▼▼
+    def get_age(self, obj):
+        if obj.birth_date:
+            today = date.today()
+            # 今年 - 誕生年 を計算し、まだ今年の誕生日が来ていなければ 1 引く
+            age = today.year - obj.birth_date.year - ((today.month, today.day) < (obj.birth_date.month, obj.birth_date.day))
+            return f"{age}歳"
+        return "-"
+    get_age.short_description = '年齢'
+    get_age.admin_order_field = 'birth_date' # 年齢（生年月日）で並び替えも可能にする！
 
     def get_import_resource_kwargs(self, request, *args, **kwargs):
         kwargs = super().get_import_resource_kwargs(request, *args, **kwargs)
