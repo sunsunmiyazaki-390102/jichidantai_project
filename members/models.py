@@ -71,6 +71,10 @@ class TenantMemberProfile(models.Model):
     # 団体側が自由に管理する基本情報
     management_id = models.CharField("管理番号", max_length=50)
     official_name = models.CharField("氏名", max_length=100)
+
+    # ▼▼▼ 新規追加：電話番号の箱 ▼▼▼
+    phone_number = models.CharField("電話番号", max_length=20, blank=True, null=True)
+
     official_address = models.CharField("住所", max_length=255, blank=True, null=True)
     birth_date = models.DateField("生年月日", blank=True, null=True)
     head_of_household = models.CharField("世帯主名", max_length=100, blank=True, null=True)

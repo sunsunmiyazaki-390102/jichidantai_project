@@ -43,7 +43,10 @@ class TenantMemberProfileResource(resources.ModelResource):
     # ▼▼▼ Excelに出力・入力したい列をモデルに合わせて定義します ▼▼▼
     management_id = fields.Field(attribute='management_id', column_name='管理番号')
     official_name = fields.Field(attribute='official_name', column_name='氏名')
-    
+
+    # ▼▼▼ 新規追加：Excelの列に電話番号を追加 ▼▼▼
+    phone_number = fields.Field(attribute='phone_number', column_name='電話番号')
+
     # 住所・世帯関連
     official_address = fields.Field(attribute='official_address', column_name='住所')
     birth_date = fields.Field(attribute='birth_date', column_name='生年月日')
@@ -67,7 +70,7 @@ class TenantMemberProfileResource(resources.ModelResource):
         
         # ▼▼▼ Excelとして扱うフィールド（出力する順番）を列挙します ▼▼▼
         fields = (
-            'ai_member', 'management_id', 'official_name', 
+            'ai_member', 'management_id', 'official_name','phone_number', 
             'official_address', 'birth_date', 'head_of_household', 'relationship',
             'group_1', 'group_2', 'group_3', 
             'note_1', 'note_2', 'note_3'
