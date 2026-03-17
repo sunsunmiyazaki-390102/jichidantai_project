@@ -151,20 +151,48 @@ class TenantMemberProfileAdmin(ImportExportModelAdmin):
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
-        # スーパーユーザー以外（一般管理者）の場合のみ制限をかける
+        from django.db.models import Q # ← ★新規追加：複雑な「OR（または）」条件を作るための魔法の部品
+
+        # ==========================================
+        # ▼ 一般管理者（自治会役員）向けのプルダウン制限
+        # ==========================================
         if not request.user.is_superuser:
             from bot.models import Politician # 念のためインポート
             tenant = Politician.objects.filter(admin_users=request.user).first()
             
             if tenant:
-                # ①「所属団体」のプルダウンを自団体のみに制限（他団体を間違えて選ばないように）
+                # ①「所属団体」のプルダウンを自団体のみに制限
                 if 'politician' in form.base_fields:
                     form.base_fields['politician'].queryset = form.base_fields['politician'].queryset.filter(id=tenant.id)
                 
-                # ②「紐づくLINEアカウント」のプルダウンを、自団体のLINEユーザーのみに制限
+                # ②「紐づくLINEアカウント」のプルダウンから作成済みを除外！
                 if 'ai_member' in form.base_fields:
-                    form.base_fields['ai_member'].queryset = form.base_fields['ai_member'].queryset.filter(politician=tenant)
-                       
+                    if obj and obj.ai_member:
+                        # 【編集画面を開いた時】未登録の人 ＋「今この名簿に紐づいている本人」を表示
+                        form.base_fields['ai_member'].queryset = form.base_fields['ai_member'].queryset.filter(
+                            Q(politician=tenant) & (Q(profile__isnull=True) | Q(id=obj.ai_member.id))
+                        )
+                    else:
+                        # 【新規追加画面を開いた時】まだ名簿が無い（未登録の）人だけをスッキリ表示
+                        form.base_fields['ai_member'].queryset = form.base_fields['ai_member'].queryset.filter(
+                            politician=tenant, profile__isnull=True
+                        )
+
+        # ==========================================
+        # ▼ スーパーユーザー（システム管理者）向けのプルダウン制限
+        # ==========================================
+        else:
+            if 'ai_member' in form.base_fields:
+                if obj and obj.ai_member:
+                    form.base_fields['ai_member'].queryset = form.base_fields['ai_member'].queryset.filter(
+                        Q(profile__isnull=True) | Q(id=obj.ai_member.id)
+                    )
+                else:
+                    form.base_fields['ai_member'].queryset = form.base_fields['ai_member'].queryset.filter(profile__isnull=True)
+
+        # ==========================================
+        # ▼ 各団体のカスタムラベル（グループ名など）の適用
+        # ==========================================
         if obj and obj.politician:
             if 'group_1' in form.base_fields:
                 form.base_fields['group_1'].label = obj.politician.label_group_1
