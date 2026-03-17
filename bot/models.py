@@ -100,6 +100,10 @@ class Event(models.Model):
     def __str__(self):
         return self.title
 
+    class Meta:
+        verbose_name = "イベント・行事カレンダー"
+        verbose_name_plural = "イベント・行事カレンダー"
+
 class UserProgress(models.Model):
     line_user_id = models.CharField(max_length=255)
     politician = models.ForeignKey(Politician, on_delete=models.CASCADE)
@@ -110,12 +114,20 @@ class UserProgress(models.Model):
     class Meta:
         unique_together = ('line_user_id', 'current_course')
 
+    class Meta:
+        verbose_name = "住民のアクション履歴（学習進捗）"
+        verbose_name_plural = "住民のアクション履歴（学習進捗）"
+
 class MessageLog(models.Model):
     member = models.ForeignKey('members.AiMember', on_delete=models.CASCADE)
     role = models.CharField(max_length=10)
     text = models.TextField()
     is_escalated = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "送信メッセージ履歴"
+        verbose_name_plural = "送信メッセージ履歴"    
 
 class GarbageCalendar(models.Model):
     municipality = models.CharField(max_length=50, verbose_name="市町村")
@@ -231,6 +243,10 @@ class CityAdminProfile(models.Model):
 
     def __str__(self):
         return f"{self.city_name} 防災担当 ({self.user.username})"
+    
+    class Meta:
+        verbose_name = "市町村アカウント（担当者）"
+        verbose_name_plural = "市町村アカウント（担当者）"
 
 # ==========================================
 # ▼ 第2フェーズ：自治体管理者用の「横断」一斉配信モデル
@@ -269,6 +285,10 @@ class CityEmergencyEvent(models.Model):
 
     def __str__(self):
         return f"【市町村横断】{self.title} ({self.city_admin.city_name})"
+    
+    class Meta:
+        verbose_name = "市町村・横断一斉送信（イベント）"
+        verbose_name_plural = "市町村・横断一斉送信（イベント）"
 
 # ==========================================
 # ▼ 新しく追加する「行政用の回答集計箱」
