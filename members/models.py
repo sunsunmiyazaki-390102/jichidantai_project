@@ -87,3 +87,9 @@ class TenantMemberProfile(models.Model):
     note_1 = models.CharField("備考1", max_length=255, blank=True, null=True)
     note_2 = models.CharField("備考2", max_length=255, blank=True, null=True)
     note_3 = models.CharField("備考3", max_length=255, blank=True, null=True)   
+
+    # ▼▼▼ 新規追加：テーブル名を綺麗な日本語にする ▼▼▼
+    class Meta:
+        verbose_name = "自治会名簿（メンバーデータ）"
+        verbose_name_plural = "自治会名簿（メンバーデータ）"
+        

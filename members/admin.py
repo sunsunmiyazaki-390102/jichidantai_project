@@ -7,6 +7,11 @@ from .models import AiMember, TenantMemberProfile
 from bot.models import Politician
 from datetime import date
 
+# ▼▼▼ 新規追加：システム全体の看板をオリジナルに変更する魔法 ▼▼▼
+admin.site.site_header = "結（ゆい）- 地域コミュニティ管理システム"
+admin.site.site_title = "結（ゆい）管理画面"
+admin.site.index_title = "管理ダッシュボード"
+
 # ==========================================
 # 1. AiMember (LINEアカウント) の管理画面
 # ==========================================
