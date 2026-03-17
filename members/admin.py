@@ -23,10 +23,15 @@ generate_lesson_action.short_description = "選択したメンバーにGemini教
 
 @admin.register(AiMember)
 class AiMemberAdmin(admin.ModelAdmin):
-    list_display = ('line_user_id', 'real_name', 'current_level', 'is_approved', 'created_at', 'line_display_name')
-    list_editable = ('is_approved', 'current_level') # 一覧画面でそのまま編集可能に
-    search_fields = ('real_name', 'line_user_id', 'address')
-    list_filter = ('current_level', 'is_approved', 'politician')
+    list_display = ('line_user_id', 'real_name', 'created_at', 'line_display_name', 'politician')
+    # list_editable = ('is_approved', 'current_level')
+    search_fields = ('real_name', 'line_user_id', 'line_display_name')
+    list_filter = ('politician',)
+
+    # ▼▼▼ 修正②：詳細（入力）画面からも不要な項目を完全に隠す（非表示にする） ▼▼▼
+    exclude = ('is_approved', 'current_level', 'address', 'phone_number') 
+    # ※ここに書いた項目は、裏のデータベースには存在していても、画面上からは綺麗に消え去ります！
+
     actions = [generate_lesson_action]
 
     def get_queryset(self, request):
