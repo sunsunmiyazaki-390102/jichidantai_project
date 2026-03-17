@@ -1,7 +1,7 @@
 from django.contrib import admin
 from import_export import resources, fields
 from import_export.admin import ImportExportModelAdmin
-from import_export.widgets import ForeignKeyWidget
+from import_export.widgets import ForeignKeyWidget, CharWidget
 
 from .models import AiMember, TenantMemberProfile
 from bot.models import Politician
@@ -45,7 +45,7 @@ class TenantMemberProfileResource(resources.ModelResource):
     official_name = fields.Field(attribute='official_name', column_name='氏名')
 
     # ▼▼▼ 新規追加：Excelの列に電話番号を追加 ▼▼▼
-    phone_number = fields.Field(attribute='phone_number', column_name='電話番号')
+    phone_number = fields.Field(attribute='phone_number', column_name='電話番号', widget=CharWidget())
 
     # 住所・世帯関連
     official_address = fields.Field(attribute='official_address', column_name='住所')
@@ -122,6 +122,16 @@ class TenantMemberProfileResource(resources.ModelResource):
         raw_date = row.get('生年月日')
         if raw_date == "" or str(raw_date).strip() == "":
             row['生年月日'] = None
+
+        # ▼▼▼ 新規追加：Excelの「電話番号の0落ち」を自動補正する魔法 ▼▼▼
+        raw_phone = row.get('電話番号')
+        if raw_phone:
+            # Excelが勝手に数値(例: 9012345678)にしてしまった場合、文字列に戻す
+            phone_str = str(raw_phone).strip()
+            # もし「数字だけ」で構成されていて、かつ「先頭が 0 じゃない」場合
+            if phone_str.isdigit() and not phone_str.startswith('0'):
+                # 携帯番号や市外局番の0落ちと判断し、強制的に '0' を付け直す！
+                row['電話番号'] = '0' + phone_str
 
     def before_save_instance(self, instance, row, **kwargs):
         """プロフィール本体が保存される直前に、所属団体を強制上書き"""
