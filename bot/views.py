@@ -3,7 +3,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage, FlexSendMessage, FollowEvent, PostbackEvent
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, FlexSendMessage, FollowEvent, PostbackEvent, TemplateSendMessage, CarouselTemplate, CarouselColumn
 from django.utils import timezone
 from datetime import timedelta
 from urllib.parse import parse_qsl
@@ -233,6 +233,64 @@ def callback(request, politician_slug):
             if user_text == "ゴミ出しカレンダー":
                 flex_msg = get_flex_schedule()
                 line_bot_api.reply_message(event.reply_token, flex_msg)
+                return
+            
+            # ==========================================
+            # ▼▼▼ 新規追加：行事カレンダー（カルーセル表示） ▼▼▼
+            # ==========================================
+            if user_text == "行事カレンダー":
+                today = timezone.localtime(timezone.now()).date()
+                
+                # 今日以降のイベントを日付順に「最大3件」取得する
+                upcoming_events = Event.objects.filter(
+                    politician=politician,
+                    date__date__gte=today  # models.pyの 'date' 項目で絞り込み
+                ).order_by('date')[:3]
+
+                if not upcoming_events.exists():
+                    line_bot_api.reply_message(
+                        event.reply_token,
+                        TextSendMessage(text="現在、予定されている直近の行事・イベントはありません。")
+                    )
+                    return
+
+                columns = []
+                for ev in upcoming_events:
+                    # ①タイトル処理（LINEの制限：最大40文字）
+                    card_title = ev.title[:40] if ev.title else "名称未設定"
+                    
+                    # ②日付のフォーマット（例：11月15日 10:00）
+                    date_str = timezone.localtime(ev.date).strftime('%m月%d日 %H:%M')
+                    
+                    # ③テキスト処理（LINEの制限：最大60文字）
+                    # 日付と説明文を合体させ、60文字を超える場合は「...」で省略する安全設計
+                    card_desc = ev.description if ev.description else "詳細はタップして確認"
+                    text_content = f"📅 {date_str}\n{card_desc}"
+                    if len(text_content) > 60:
+                        text_content = text_content[:57] + "..."
+
+                    # ④カードを1枚ずつ組み立てる
+                    columns.append(
+                        CarouselColumn(
+                            title=card_title,
+                            text=text_content,
+                            actions=[
+                                # 将来的に「出欠ボタン」などに変更できるダミーボタン
+                                PostbackAction(
+                                    label='確認する',
+                                    data=f'action=view_event&event_id={ev.id}'
+                                )
+                            ]
+                        )
+                    )
+
+                # ⑤カードの束（カルーセル）を作って送信！
+                carousel_message = TemplateSendMessage(
+                    alt_text='直近の行事カレンダーが届きました',
+                    template=CarouselTemplate(columns=columns)
+                )
+
+                line_bot_api.reply_message(event.reply_token, carousel_message)
                 return
 
             # お問い合わせ
