@@ -93,6 +93,22 @@ class EventAdmin(TenantIsolationAdmin):
     list_display = ('title', 'politician', 'date')
     list_filter = ('politician',)
 
+    # ① 一覧画面で「自分の自治会」のデータしか表示させない
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        # 自分が admin_users に登録されている自治会のデータだけを返す
+        return qs.filter(politician__admin_users=request.user)
+
+    # ② 追加・編集画面の「所属団体」プルダウンで、他団体を選べなくする
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if not request.user.is_superuser:
+            if 'politician' in form.base_fields:
+                form.base_fields['politician'].queryset = form.base_fields['politician'].queryset.filter(admin_users=request.user)
+        return form
+
 @admin.register(UserProgress)
 class UserProgressAdmin(TenantIsolationAdmin):
     tenant_filter_field = 'politician__admin_users'
@@ -565,5 +581,4 @@ class CityMemberProfileAdmin(admin.ModelAdmin):
     # ▼▼▼ 新規追加：スーパーユーザー以外はメニューから隠す ▼▼▼
     def has_module_permission(self, request):
         return request.user.is_superuser
-    
     
