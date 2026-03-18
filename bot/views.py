@@ -3,7 +3,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage, FlexSendMessage, FollowEvent, PostbackEvent, TemplateSendMessage, CarouselTemplate, CarouselColumn
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, FlexSendMessage, FollowEvent, PostbackEvent, TemplateSendMessage, CarouselTemplate, CarouselColumn, PostbackAction
 from django.utils import timezone
 from datetime import timedelta
 from urllib.parse import parse_qsl
