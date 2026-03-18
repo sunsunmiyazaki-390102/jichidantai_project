@@ -26,7 +26,15 @@ class AiMemberAdmin(admin.ModelAdmin):
     list_display = ('line_user_id', 'real_name', 'created_at', 'line_display_name', 'politician')
     # list_editable = ('is_approved', 'current_level')
     search_fields = ('real_name', 'line_user_id', 'line_display_name')
-    list_filter = ('politician',)
+    # list_filter = ('politician',)
+
+    # ▼▼▼ 新規追加：スーパーユーザー以外はフィルターを完全に隠す ▼▼▼
+    def get_list_filter(self, request):
+        if request.user.is_superuser:
+            # スーパーユーザーには全てのフィルターを表示
+            return ('ai_skill_level', 'is_approved', 'politician')
+        # 一般役員にはフィルターを表示しない（空っぽにする）
+        return () 
 
     # ▼▼▼ 修正②：詳細（入力）画面からも不要な項目を完全に隠す（非表示にする） ▼▼▼
     exclude = ('is_approved', 'current_level', 'address', 'phone_number') 
@@ -172,7 +180,15 @@ class TenantMemberProfileAdmin(ImportExportModelAdmin):
     search_fields = ('official_name', 'management_id', 'phone_number', 'official_address')
     
     # ⑤ 画面右側に表示される「絞り込みフィルター」（役員だけ、1班だけ、などを一発で抽出）
-    list_filter = ('politician', 'group_1', 'group_2')
+    # list_filter = ('politician', 'group_1', 'group_2')
+
+    # ▼▼▼ 新規追加：スーパーユーザー以外はフィルターを完全に隠す ▼▼▼
+    def get_list_filter(self, request):
+        if request.user.is_superuser:
+            # スーパーユーザーには全てのフィルターを表示
+            return ('politician', 'group_1', 'group_2')
+        # 一般役員にはフィルターを表示しない（空っぽにする）
+        return () 
 
     # ▼▼▼ 改善案2：詳細画面の「ブロック分け（整理整頓）」 ▼▼▼
     fieldsets = (
