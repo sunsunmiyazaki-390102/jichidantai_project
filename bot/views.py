@@ -258,10 +258,12 @@ def callback(request, politician_slug):
                 for ev in upcoming_events:
                     # ①タイトル処理（LINEの制限：最大40文字）
                     card_title = ev.title[:40] if ev.title else "名称未設定"
-                    
-                    # ②日付のフォーマット（例：11月15日 10:00）
-                    date_str = timezone.localtime(ev.date).strftime('%m月%d日 %H:%M')
-                    
+
+                    # ▼▼▼ 修正：②日付のフォーマット（Windowsエラー回避版） ▼▼▼
+                    # （修正前）date_str = timezone.localtime(ev.date).strftime('%m月%d日 %H:%M')
+                    local_date = timezone.localtime(ev.date)
+                    date_str = f"{local_date.month}月{local_date.day}日 {local_date.strftime('%H:%M')}"
+
                     # ③テキスト処理（LINEの制限：最大60文字）
                     # 日付と説明文を合体させ、60文字を超える場合は「...」で省略する安全設計
                     card_desc = ev.description if ev.description else "詳細はタップして確認"
