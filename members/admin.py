@@ -32,7 +32,7 @@ class AiMemberAdmin(admin.ModelAdmin):
     def get_list_filter(self, request):
         if request.user.is_superuser:
             # スーパーユーザーには全てのフィルターを表示
-            return ('ai_skill_level', 'is_approved', 'politician')
+            return ('politician',)
         # 一般役員にはフィルターを表示しない（空っぽにする）
         return () 
 
