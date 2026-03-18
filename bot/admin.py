@@ -91,7 +91,13 @@ class CourseAdmin(TenantIsolationAdmin):
 class EventAdmin(TenantIsolationAdmin):
     tenant_filter_field = 'politician__admin_users'
     list_display = ('title', 'politician', 'date')
-    list_filter = ('politician',)
+    # list_filter = ('politician',)
+
+    # ▼▼▼ 新規追加：スーパーユーザー以外はフィルターを隠す ▼▼▼
+    def get_list_filter(self, request):
+        if request.user.is_superuser:
+            return ('politician',)
+        return () # 一般役員は空っぽ（フィルターなし）にする
 
     # ① 一覧画面で「自分の自治会」のデータしか表示させない
     def get_queryset(self, request):
@@ -294,14 +300,20 @@ def broadcast_emergency_message(modeladmin, request, queryset):
 @admin.register(EmergencyEvent)
 class EmergencyEventAdmin(admin.ModelAdmin):
     list_display = ('title', 'politician', 'is_active', 'created_at')
-    list_filter = ('politician', 'is_active')
+    # list_filter = ('politician', 'is_active')
     search_fields = ('title', 'message_body')
     
     # ここで先ほどのインラインパネルを組み込む
     inlines = [EmergencyResponseInline]
 
     # 【追記】アクションとして登録する
-    actions = [broadcast_emergency_message]    
+    actions = [broadcast_emergency_message] 
+
+    # ▼▼▼ 新規追加：一般役員からは「所属団体」フィルターだけを隠す ▼▼▼
+    def get_list_filter(self, request):
+        if request.user.is_superuser:
+            return ('politician', 'is_active')
+        return ('is_active',) # 一般役員には「受付中かどうか」のフィルターだけ残す
 
     def get_queryset(self, request):
         """【防衛策】テナント分離（一覧画面に他団体の配信を見せない）"""
