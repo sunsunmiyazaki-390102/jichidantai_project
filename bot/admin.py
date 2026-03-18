@@ -76,6 +76,10 @@ class PoliticianAdmin(admin.ModelAdmin):
             return qs
         return qs.filter(admin_users=request.user)
 
+    # ▼▼▼ 新規追加：スーパーユーザー以外はメニューから隠す ▼▼▼
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
 @admin.register(Course)
 class CourseAdmin(TenantIsolationAdmin):
     # CourseはCourseAssignmentを通じてPoliticianに紐づくためフィルタ条件を変更
@@ -324,6 +328,10 @@ class EmergencyResponseAdmin(ImportExportModelAdmin):
 class CityAdminProfileAdmin(admin.ModelAdmin):
     list_display = ('city_name', 'city_code', 'user')
 
+    # ▼▼▼ 新規追加：スーパーユーザー以外はメニューから隠す ▼▼▼
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
 # ==========================================
 # ▼ 第2フェーズ：行政による「全自治会・横断送信」システム（完全版）
 # ==========================================
@@ -503,6 +511,10 @@ class CityEmergencyEventAdmin(admin.ModelAdmin):
             kwargs["queryset"] = CityAdminProfile.objects.filter(user=request.user)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
+    # ▼▼▼ 新規追加：スーパーユーザー以外はメニューから隠す ▼▼▼
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
 # ==========================================
 # ▼ 第2フェーズ：行政専用の「住民タグ付け」管理画面（個人情報保護対応）
 # ==========================================
@@ -550,3 +562,8 @@ class CityMemberProfileAdmin(admin.ModelAdmin):
             kwargs["queryset"] = CityAdminProfile.objects.filter(user=request.user)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
         
+    # ▼▼▼ 新規追加：スーパーユーザー以外はメニューから隠す ▼▼▼
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+    
+    
