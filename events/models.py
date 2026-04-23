@@ -27,3 +27,23 @@ class Event(models.Model):
     class Meta:
         verbose_name = "イベント情報"
         verbose_name_plural = "イベント情報一覧"
+
+# 運営側の防衛的視点：マルチテナント用フォルダ分離ロジック
+def tenant_directory_path(instance, filename):
+    # 本番運用時は instance.tenant.id 等で自治会ごとに動的ルーティングします。
+    # 今回はテスト用に 'test_tenant_001' という固定フォルダを切ります。
+    tenant_id = getattr(instance, 'tenant_id', 'test_tenant_001')
+    return f'{tenant_id}/photos/{filename}'
+
+class EventPhoto(models.Model):
+    title = models.CharField('写真タイトル', max_length=255)
+    image = models.ImageField('イベント写真', upload_to=tenant_directory_path)
+    uploaded_at = models.DateTimeField('アップロード日時', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'イベント写真(S3テスト)'
+        verbose_name_plural = 'イベント写真(S3テスト)'
+
+    def __str__(self):
+        return self.title
+           

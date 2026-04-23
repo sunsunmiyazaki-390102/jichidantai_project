@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'events',
     'line_control',
     'import_export',
+    'storages',
 ]
 
 MIDDLEWARE = [
@@ -160,3 +161,30 @@ SECURE_SSL_REDIRECT = not DEBUG  # 本番環境のみリダイレクト
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 CSRF_TRUSTED_ORIGINS = ['https://aikouenkai.jp']
+
+# ==========================================
+# AWS S3 Settings
+# ==========================================
+AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY')
+AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME')
+AWS_S3_REGION_NAME = 'ap-northeast-1'
+
+# 署名付きURLの有効期限（セキュリティ防衛：閲覧URLを1時間で無効化）
+AWS_QUERYSTRING_AUTH = True
+AWS_QUERYSTRING_EXPIRE = 3600
+
+# 【削除する行】(Django 5.1以降では無効なため消します)
+# DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+
+# 【追記するコード】(Django 6.0対応の新しい記述形式)
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
+
+MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/'
