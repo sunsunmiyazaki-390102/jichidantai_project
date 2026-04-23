@@ -35,15 +35,30 @@ def tenant_directory_path(instance, filename):
     tenant_id = getattr(instance, 'tenant_id', 'test_tenant_001')
     return f'{tenant_id}/photos/{filename}'
 
+ # 運営側の防衛的視点: 本番環境用のテナント別ルーティングへ修正
+def event_photo_path(instance, filename):
+    # テスト用の 'test_tenant_001' をやめ、実際の自治会IDを取得
+    p_id = getattr(instance, 'politician_id', 'unknown')
+    return f'tenant_{p_id}/event_photos/{filename}'
+
 class EventPhoto(models.Model):
+    # ▼ 本番仕様として、自治会への紐付け（リレーション）を追加
+    politician = models.ForeignKey(
+        'bot.Politician', 
+        on_delete=models.CASCADE, 
+        verbose_name='対象自治会'
+    )
+    
     title = models.CharField('写真タイトル', max_length=255)
-    image = models.ImageField('イベント写真', upload_to=tenant_directory_path)
+    image = models.ImageField('イベント写真', upload_to=event_photo_path)
     uploaded_at = models.DateTimeField('アップロード日時', auto_now_add=True)
 
     class Meta:
-        verbose_name = 'イベント写真(S3テスト)'
-        verbose_name_plural = 'イベント写真(S3テスト)'
+        # 「(S3テスト)」という文字を外し、本番の名称へ変更
+        verbose_name = 'イベント写真'
+        verbose_name_plural = 'イベント写真一覧'
 
     def __str__(self):
-        return self.title
-           
+        # どの自治会の写真か管理画面で分かりやすいように変更
+        return f"{self.title} ({self.politician.name})"
+              

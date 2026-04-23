@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     'line_control',
     'import_export',
     'storages',
+    'library',
 ]
 
 MIDDLEWARE = [
