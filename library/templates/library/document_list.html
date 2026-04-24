@@ -1,0 +1,23 @@
+<div class="library-container">
+    <h2>📖 自治会資料室</h2>
+    
+    <div class="document-grid">
+        {% for doc in page_obj %}
+        <div class="document-card">
+            <div class="doc-info">
+                <span class="badge">{{ doc.get_category_display }}</span>
+                <span class="year">{{ doc.fiscal_year }}年度</span>
+                <h3>{{ doc.title }}</h3>
+            </div>
+            
+            <a href="{{ doc.document_file.url }}" class="download-btn" target="_blank" rel="noopener">
+                表示・保存
+            </a>
+        </div>
+        {% empty %}
+        <p>現在、公開されている資料はありません。</p>
+        {% endfor %}
+    </div>
+
+    </div>
+    

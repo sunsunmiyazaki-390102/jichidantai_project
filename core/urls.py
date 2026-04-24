@@ -27,7 +27,7 @@ def index(request):
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    # botアプリのurls.pyを読み込む設定を追加
+    path('library/', include('library.urls')),
     path('bot/', include('bot.urls')),
     path('', index), # ★追加3：空っぽ（トップページ）の行き先を指定
 ]

@@ -15,6 +15,36 @@ import traceback
 from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityEmergencyEvent, CityEmergencyResponse
 from members.models import AiMember
 
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+from library.models import LibraryDocument
+from django.core.paginator import Paginator
+
+@login_required
+def library_list(request):
+    """
+    住民が所属する自治会の資料のみを表示するセキュアなビュー
+    """
+    # 運営側の防衛的視点: ログインユーザーの所属情報を基準にフィルタリングを強制
+    # ※Userモデルに紐付くMemberモデルがあると仮定
+    user_member = request.user.member 
+    
+    # 論理削除されていない、かつ権限が「全住民公開」のもののみを取得
+    # 年度降順・登録日降順でソート
+    documents = LibraryDocument.active_objects.filter(
+        politician=user_member.politician,
+        access_level='PUBLIC'
+    ).order_by('-fiscal_year', '-created_at')
+
+    # 大量データ対策: 1ページ20件のページネーション
+    paginator = Paginator(documents, 20)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, 'library/document_list.html', {
+        'page_obj': page_obj,
+    })
+
 # 💡【削除】ここに書いてあった REGION_MAP は不要になったため完全に削除しました！
 
 @csrf_exempt
