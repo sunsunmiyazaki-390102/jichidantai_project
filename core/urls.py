@@ -20,6 +20,7 @@ from django.urls import path, include
 from django.http import HttpResponse # ★追加1：画面に文字を出す部品
 from django.conf import settings
 from django.conf.urls.static import static
+from bot import views as bot_views
 
 # ★追加2：簡単な表示機能を作る
 def index(request):
@@ -30,6 +31,8 @@ urlpatterns = [
     path('library/', include('library.urls')),
     path('bot/', include('bot.urls')),
     path('', index), # ★追加3：空っぽ（トップページ）の行き先を指定
+    # 新規追加：自治会ごとの公開ページ用URL (p = page/public の略)
+    path('p/<slug:slug>/', bot_views.public_tenant_page, name='public_tenant_page'),    
 ]
 
 # アップロードされたメディアファイル（PDFや画像）を表示するための設定

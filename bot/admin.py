@@ -3,7 +3,7 @@ from import_export import resources, fields
 from import_export.admin import ImportExportModelAdmin
 from import_export.widgets import DateWidget
 
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityAdminProfile, CityEmergencyEvent, CityEmergencyResponse, CityMemberProfile
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityAdminProfile, CityEmergencyEvent, CityEmergencyResponse, CityMemberProfile, PublicPageConfig
 from linebot import LineBotApi
 from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, PostbackAction
 from django.shortcuts import render
@@ -593,4 +593,24 @@ class CityMemberProfileAdmin(admin.ModelAdmin):
     # ▼▼▼ 新規追加：スーパーユーザー以外はメニューから隠す ▼▼▼
     def has_module_permission(self, request):
         return request.user.is_superuser
+    
+@admin.register(PublicPageConfig)
+class PublicPageConfigAdmin(admin.ModelAdmin):
+    list_display = ('politician', 'is_public', 'updated_at')
+    list_filter = ('is_public',)
+    search_fields = ('politician__name',)
+    
+    # 運営側の防衛的視点: 項目をグループ化して、素人（自治会の役員）が見ても迷わないUI構成にする
+    fieldsets = (
+        ('基本設定', {
+            'fields': ('politician', 'is_public')
+        }),
+        ('デザイン・レイアウト', {
+            'fields': ('main_visual', 'accent_color', 'welcome_text')
+        }),
+        ('表示機能のON/OFF', {
+            'fields': ('show_announcements', 'show_events', 'show_library'),
+            'description': '※各機能をホームページ上に表示するかどうかを選択します。'
+        }),
+    )
     

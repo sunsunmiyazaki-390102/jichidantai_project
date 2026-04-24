@@ -331,4 +331,63 @@ class CityMemberProfile(models.Model):
 
     def __str__(self):
         return f"{self.ai_member.real_name or '名無し'} の行政プロファイル ({self.city_admin.city_name})"
-        
+
+def public_page_image_path(instance, filename):
+    """
+    S3への自動ルーティング関数（CMS用）
+    保存先例: tenant_1/site_assets/top_image.jpg
+    """
+    p_id = getattr(instance.politician, 'id', 'unknown')
+    return f'tenant_{p_id}/site_assets/{filename}'
+
+class PublicPageConfig(models.Model):
+    """各自治会の公開ホームページ（CMS）の設定を保持するモデル"""
+    
+    # 運営側の防衛的視点: OneToOneFieldにより「1つの自治会につき1つの設定」を強制し、データ重複エラーを防ぐ
+    politician = models.OneToOneField(
+        'bot.Politician', 
+        on_delete=models.CASCADE, 
+        related_name='page_config', 
+        verbose_name="対象自治会"
+    )
+    
+    # --- デザイン設定 ---
+    main_visual = models.ImageField(
+        "トップ画像", 
+        upload_to=public_page_image_path, 
+        blank=True, 
+        null=True, 
+        help_text="※スマホ画面の上部に表示される看板画像です（10MB以下の横長画像を推奨）"
+    )
+    accent_color = models.CharField(
+        "アクセントカラー", 
+        max_length=7, 
+        default="#2c3e50", 
+        help_text="例: #2c3e50（ヘッダー等の色を指定する16進数コード）"
+    )
+    
+    # --- コンテンツ設定 ---
+    welcome_text = models.TextField(
+        "あいさつ文", 
+        default="私たちの自治会へようこそ。", 
+        help_text="トップページに表示されるメッセージです。"
+    )
+    show_announcements = models.BooleanField("お知らせ一覧を表示する", default=True)
+    show_events = models.BooleanField("行事カレンダーを表示する", default=True)
+    show_library = models.BooleanField("公開資料室を表示する", default=True)
+    
+    # --- 公開制御 ---
+    is_public = models.BooleanField(
+        "ページを公開する", 
+        default=False, 
+        help_text="※チェックを入れると、外部からURLでアクセス可能になります。準備中は外してください。"
+    )
+    updated_at = models.DateTimeField("更新日時", auto_now=True)
+
+    class Meta:
+        verbose_name = "公開ページ（CMS）設定"
+        verbose_name_plural = "公開ページ（CMS）設定一覧"
+
+    def __str__(self):
+        return f"{self.politician.name} のページ設定"
+           

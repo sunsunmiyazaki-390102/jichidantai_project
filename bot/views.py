@@ -1,4 +1,4 @@
-from django.http import HttpResponse, HttpResponseBadRequest
+from django.http import HttpResponse, HttpResponseBadRequest, Http404
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
 from linebot import LineBotApi, WebhookHandler
@@ -583,3 +583,30 @@ def callback(request, politician_slug):
     except InvalidSignatureError:
         return HttpResponseBadRequest()
     return HttpResponse("OK")
+
+def public_tenant_page(request, slug):
+    """各自治会の専用ホームページを表示するビュー"""
+    
+    # 1. URLのslugから自治会を取得（存在しない場合は自動で404エラー）
+    politician = get_object_or_404(Politician, slug=slug)
+
+    # 🛡️ 運営側の防衛的視点: 設定が存在しない、または「非公開」の場合は強制ブロック
+    if not hasattr(politician, 'page_config') or not politician.page_config.is_public:
+        raise Http404("このページは現在準備中、または非公開です。")
+
+    config = politician.page_config
+
+    # 2. 連携機能のデータ取得（ONの場合のみDBにアクセスして負荷を減らす）
+    library_docs = []
+    if config.show_library:
+        # 最新の公開資料を5件だけ取得してトップページに表示
+        library_docs = LibraryDocument.active_objects.filter(
+            politician=politician, access_level='PUBLIC'
+        ).order_by('-fiscal_year', '-created_at')[:5]
+
+    context = {
+        'politician': politician,
+        'config': config,
+        'library_docs': library_docs,
+    }
+    return render(request, 'bot/tenant_page.html', context)
