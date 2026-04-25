@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>議事録作成サポートキット | 結（ゆい）</title>
+    <style>
+        body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; background-color: #f4f6f8; color: #333; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        .step-box { background: #e8f4fd; border-left: 5px solid #3498db; padding: 15px 20px; margin-bottom: 20px; border-radius: 4px; }
+        .step-title { font-weight: bold; color: #2980b9; font-size: 1.2rem; margin-bottom: 10px; }
+        .prompt-area { width: 100%; height: 150px; padding: 10px; font-family: monospace; background: #f8f9fa; border: 1px solid #ddd; resize: none; }
+        .copy-btn { background: #28a745; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        .copy-btn:hover { background: #218838; }
+        .download-btn { display: inline-block; background: #007bff; color: white; text-decoration: none; padding: 10px 15px; border-radius: 4px; font-weight: bold; margin-top: 10px;}
+        .warning { color: #d9534f; font-size: 0.9rem; font-weight: bold; margin-top: 10px;}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>📝 AI活用 議事録作成サポートキット</h1>
+    <p>このページは、長時間の会議録音から、AIを使って効率的かつ正確に議事録を作成するための手順書です。サーバーに音声データをアップロードしないため、情報漏洩のリスクなく安全にご利用いただけます。</p>
+
+    <div class="step-box">
+        <div class="step-title">STEP 1: 録音データの文字起こし（手元のPCで実行）</div>
+        <p>無料の文字起こしソフト「WhisperDesktop」をご自身のパソコンにダウンロードし、会議の録音データ（MP3等）を読み込ませてテキスト化してください。</p>
+        <p>🔗 <a href="https://github.com/const-me/Whisper/releases" target="_blank">WhisperDesktopのダウンロードはこちら（外部サイト）</a></p>
+    </div>
+
+    <div class="step-box">
+        <div class="step-title">STEP 2: AIによる要約・整形（ChatGPT等の活用）</div>
+        <p>以下の「行政書士監修プロンプト」をコピーし、お使いのAIツール（ChatGPTなど）に貼り付けてください。その下に、STEP1で作った文字起こしテキストを続けて貼り付けて送信します。</p>
+        
+        <textarea id="promptText" class="prompt-area" readonly>{{ expert_prompt }}</textarea>
+        <button class="copy-btn" onclick="copyPrompt()">📋 プロンプトをコピーする</button>
+        
+        <script>
+            function copyPrompt() {
+                var copyText = document.getElementById("promptText");
+                copyText.select();
+                document.execCommand("copy");
+                alert("プロンプトをクリップボードにコピーしました！");
+            }
+        </script>
+    </div>
+
+    <div class="step-box">
+        <div class="step-title">STEP 3: 公式フォーマットへの転記</div>
+        <p>AIが作成した要約文を、法的要件を満たした公式の議事録フォーマット（Wordファイル）に転記し、体裁を整えて完成です。</p>
+        <a href="#" class="download-btn">📄 議事録フォーマット（Word）をダウンロード</a>
+        <p class="warning">※完成した議事録はPDF化し、「自治会資料室」へアップロードして保管してください。</p>
+    </div>
+
+</div>
+
+</body>
+</html>

@@ -2,6 +2,7 @@ from django.contrib import admin, messages
 from import_export import resources, fields
 from import_export.admin import ImportExportModelAdmin
 from import_export.widgets import DateWidget
+from django.utils.html import format_html
 
 from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityAdminProfile, CityEmergencyEvent, CityEmergencyResponse, CityMemberProfile, PublicPageConfig
 from linebot import LineBotApi
@@ -599,11 +600,14 @@ class PublicPageConfigAdmin(admin.ModelAdmin):
     list_display = ('politician', 'is_public', 'updated_at')
     list_filter = ('is_public',)
     search_fields = ('politician__name',)
+
+    # 🔴 追記：管理画面でのみ表示する「読み取り専用」の項目を追加
+    readonly_fields = ('qr_code_display',)    
     
     # 運営側の防衛的視点: 項目をグループ化して、素人（自治会の役員）が見ても迷わないUI構成にする
     fieldsets = (
         ('基本設定', {
-            'fields': ('politician', 'is_public')
+            'fields': ('politician', 'is_public', 'qr_code_display')
         }),
         ('デザイン・レイアウト', {
             'fields': ('main_visual', 'accent_color', 'welcome_text')
@@ -613,4 +617,22 @@ class PublicPageConfigAdmin(admin.ModelAdmin):
             'description': '※各機能をホームページ上に表示するかどうかを選択します。'
         }),
     )
+
+    # 🛡️ 運営側の防衛的視点: ライブラリ追加不要・DB保存不要で動的にQRコードを生成するメソッド
+    def qr_code_display(self, obj):
+        # 設定が保存されており、かつ公開状態の場合のみQRを表示
+        if obj.pk and obj.is_public and obj.politician.slug:
+            # 本番環境のURLを自動生成
+            target_url = f"https://jichidantai.jp/p/{obj.politician.slug}/"
+            # 外部APIを使って動的にQR画像を取得
+            api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={target_url}"
+            
+            return format_html(
+                '<img src="{}" width="150" height="150" style="border: 1px solid #ccc; padding: 5px; background: white;"/><br>'
+                '<br><a href="{}" target="_blank" style="display:inline-block; padding: 5px 10px; background: #007bff; color: white; text-decoration: none; border-radius: 3px;">📥 QR画像をダウンロード</a>'
+                '<p style="color: #666; margin-top: 5px;">※この画像を右クリックで保存し、回覧板や公民館のポスターに印刷してご活用ください。</p>',
+                api_url, api_url
+            )
+        return "ページを「公開」にして一度保存すると、ここにポスター印刷用のQRコードが自動生成されます。"
     
+    qr_code_display.short_description = "回覧板・ポスター用QRコード"

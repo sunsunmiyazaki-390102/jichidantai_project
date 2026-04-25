@@ -34,9 +34,44 @@
     {% endif %}
 
     <div class="container">
+        
         <div class="card">
             {{ config.welcome_text|linebreaksbr }}
         </div>
+
+        {% if config.show_announcements %}
+        <div class="card">
+            <h3 class="card-title">📢 最新のお知らせ</h3>
+            <ul class="doc-list">
+                {% for info in announcements %}
+                <li>
+                    <span style="font-size: 0.8rem; color: #666;">{{ info.created_at|date:"Y/m/d" }}</span><br>
+                    <strong>{{ info.title }}</strong>
+                </li>
+                {% empty %}
+                <li>現在、新しいお知らせはありません。</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if config.show_events %}
+        <div class="card">
+            <h3 class="card-title">📅 今後の行事予定</h3>
+            <ul class="doc-list">
+                {% for event in upcoming_events %}
+                <li>
+                    <span style="font-size: 0.8rem; color: #d9534f; font-weight: bold;">
+                        {{ event.start_time|date:"n月j日(D)" }}
+                    </span><br>
+                    <strong>{{ event.title }}</strong>
+                </li>
+                {% empty %}
+                <li>現在、予定されている行事はありません。</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
 
         {% if config.show_library %}
         <div class="card">
@@ -53,7 +88,8 @@
             </ul>
         </div>
         {% endif %}
-    </div>
 
-</body>
+    </div> 
+
+</body> 
 </html>

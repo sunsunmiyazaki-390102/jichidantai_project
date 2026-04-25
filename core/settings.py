@@ -189,3 +189,6 @@ STORAGES = {
 }
 
 MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/'
+
+# 🛡️ 運営側の防衛的視点: 未ログインユーザーがアクセスした際の、強制転送先URL（管理画面のログインへ誘導）
+LOGIN_URL = '/admin/login/'

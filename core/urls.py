@@ -32,7 +32,9 @@ urlpatterns = [
     path('bot/', include('bot.urls')),
     path('', index), # ★追加3：空っぽ（トップページ）の行き先を指定
     # 新規追加：自治会ごとの公開ページ用URL (p = page/public の略)
-    path('p/<slug:slug>/', bot_views.public_tenant_page, name='public_tenant_page'),    
+    path('p/<slug:slug>/', bot_views.public_tenant_page, name='public_tenant_page'),
+    # 新規追加：議事録作成サポート画面
+    path('minutes-support/', bot_views.minutes_support_page, name='minutes_support_page'),        
 ]
 
 # アップロードされたメディアファイル（PDFや画像）を表示するための設定

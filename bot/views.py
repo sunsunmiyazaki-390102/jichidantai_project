@@ -19,6 +19,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from library.models import LibraryDocument
 from django.core.paginator import Paginator
+from events.models import Event, Announcement
 
 @login_required
 def library_list(request):
@@ -610,3 +611,70 @@ def public_tenant_page(request, slug):
         'library_docs': library_docs,
     }
     return render(request, 'bot/tenant_page.html', context)
+
+def public_tenant_page(request, slug):
+    """自治会ポータルサイトのメインビュー"""
+    politician = get_object_or_404(Politician, slug=slug)
+
+    # 🛡️ 防衛的視点：非公開設定時はアクセス遮断
+    if not hasattr(politician, 'page_config') or not politician.page_config.is_public:
+        raise Http404("このページは現在準備中、または非公開です。")
+
+    config = politician.page_config
+
+    # --- 各種データの取得（表示設定がONの場合のみ取得） ---
+    library_docs = []
+    announcements = []
+    upcoming_events = []
+
+    # 1. 資料室（最新5件）
+    if config.show_library:
+        library_docs = LibraryDocument.objects.filter(
+            politician=politician, is_deleted=False, access_level='PUBLIC'
+        ).order_by('-fiscal_year', '-created_at')[:5]
+
+    # 2. お知らせ（最新5件）
+    if config.show_announcements:
+        announcements = Announcement.objects.filter(
+            politician=politician, is_active=True
+        ).order_by('-created_at')[:5]
+
+    # 3. 行事（本日以降、かつ公開中のものを近い順に5件）
+    if config.show_events:
+        # 🛡️ 防衛的視点：過去の行事を自動で非表示にし、管理者の消し忘れによる混乱を防ぐ
+        upcoming_events = Event.objects.filter(
+            politician=politician,
+            is_active=True,
+            start_time__gte=timezone.now()
+        ).order_by('start_time')[:5]
+
+    return render(request, 'bot/tenant_page.html', {
+        'politician': politician,
+        'config': config,
+        'library_docs': library_docs,
+        'announcements': announcements,
+        'upcoming_events': upcoming_events,
+    })
+
+# 🛡️ 運営側の防衛的視点: 役員（ログインユーザー）しか見られないように制限をかける
+@login_required
+def minutes_support_page(request):
+    """議事録作成サポートキットの案内画面"""
+    
+    # AIに渡すための、行政書士監修の「魔法のプロンプト」を定義
+    expert_prompt = """
+あなたは優秀な自治会の書記です。以下の会議録音テキストから、議事録のドラフトを作成してください。
+
+【抽出条件】
+1. 「決定事項」「保留事項」「次回の課題」を箇条書きで明確にすること。
+2. 個人への誹謗中傷や、感情的な発言は除外すること。
+3. 文体は「だ・である」調で、簡潔かつ客観的な記録とすること。
+
+【会議録音テキスト】
+（※ここにWhisperDesktopで文字起こししたテキストを貼り付けてください）
+    """.strip()
+
+    context = {
+        'expert_prompt': expert_prompt,
+    }
+    return render(request, 'bot/minutes_support.html', context)

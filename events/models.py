@@ -1,6 +1,14 @@
 from django.db import models
 
 class Event(models.Model):
+    politician = models.ForeignKey(
+        'bot.Politician',
+        on_delete=models.CASCADE,
+        verbose_name='対象自治会',
+        null=True,
+        blank=True,
+        related_name='events_app_events'
+    )    
     title = models.CharField("イベント名", max_length=100)
     start_time = models.DateTimeField("開始日時")
     location = models.CharField("場所", max_length=100, default="未定")
@@ -61,4 +69,19 @@ class EventPhoto(models.Model):
     def __str__(self):
         # どの自治会の写真か管理画面で分かりやすいように変更
         return f"{self.title} ({self.politician.name})"
-              
+
+class Announcement(models.Model):
+    """自治会からのお知らせ（回覧板のデジタル版）"""
+    politician = models.ForeignKey(
+        'bot.Politician',
+        on_delete=models.CASCADE,
+        related_name='announcements'
+    )
+    title = models.CharField("タイトル", max_length=200)
+    content = models.TextField("内容")
+    created_at = models.DateTimeField("投稿日時", auto_now_add=True)
+    is_active = models.BooleanField("公開中", default=True)
+
+    class Meta:
+        verbose_name = "お知らせ"
+        verbose_name_plural = "お知らせ一覧"
