@@ -1,0 +1,20 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block branding %}
+<h1 id="site-name">
+    <a href="{% url 'admin:index' %}">
+        {{ site_header|default:_('Django administration') }}
+    </a>
+</h1>
+
+<div style="margin: 10px 0 5px 0;">
+    <a href="{% url 'minutes_support_page' %}" 
+       style="display: inline-block; background: #28a745; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 14px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+        📝 AI議事録作成サポート画面を開く
+    </a>
+</div>
+{% endblock %}
+
+{% block nav-global %}
+{% endblock %}

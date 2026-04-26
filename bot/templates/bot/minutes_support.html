@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -48,7 +49,7 @@
     <div class="step-box">
         <div class="step-title">STEP 3: 公式フォーマットへの転記</div>
         <p>AIが作成した要約文を、法的要件を満たした公式の議事録フォーマット（Wordファイル）に転記し、体裁を整えて完成です。</p>
-        <a href="#" class="download-btn">📄 議事録フォーマット（Word）をダウンロード</a>
+        <a href="{% static 'documents/gijiroku_template.docx' %}" class="download-btn" download>📄 議事録フォーマット（Word）をダウンロード</a>
         <p class="warning">※完成した議事録はPDF化し、「自治会資料室」へアップロードして保管してください。</p>
     </div>
 

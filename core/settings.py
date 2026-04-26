@@ -141,9 +141,19 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+# core/settings.py の静的ファイル設定部分を以下に修正
 
-STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+STATIC_URL = '/static/'
+
+# 🛡️ 防衛的設計: 開発用フォルダと本番用フォルダの完全分離
+
+# ① 開発用（手動でWordファイルなどを置く「作業場」）
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
+
+# ② 本番用（コマンド実行時にDjangoが自動で全ファイルをかき集める「展示室」）
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # アップロードされたファイル（PDFなど）の保存先とURLルールの設定
 MEDIA_URL = '/media/'
