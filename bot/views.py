@@ -267,6 +267,22 @@ def callback(request, politician_slug):
                 return
             
             # ==========================================
+            # ▼▼▼ 新規追加：ポータルサイトへの誘導 ▼▼▼
+            # ==========================================
+            if user_text in ["ホームページ", "ホームページへ移動", "ポータルサイト"]:
+                # 🛡️ 運営側の防衛的視点: URLをハードコードせず、データベースのslugから動的生成
+                # さらに、LINE内ブラウザの不具合を回避する安全パラメータをシステム側で強制付与
+                portal_url = f"https://jichidantai.jp/p/{politician.slug}/?openExternalBrowser=1"
+                
+                reply_text = (
+                    f"🌐 {politician.name}の公式ページはこちらです！\n\n"
+                    f"回覧板・アンケートの回答や、最新のお知らせは以下のリンクからご確認ください。\n\n"
+                    f"{portal_url}"
+                )
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+                return            
+            
+            # ==========================================
             # ▼▼▼ 新規追加：行事カレンダー（カルーセル表示） ▼▼▼
             # ==========================================
             if user_text == "行事カレンダー":
