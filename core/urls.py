@@ -21,6 +21,7 @@ from django.http import HttpResponse # ★追加1：画面に文字を出す部�
 from django.conf import settings
 from django.conf.urls.static import static
 from bot import views as bot_views
+from events import views as events_views
 
 # ★追加2：簡単な表示機能を作る
 def index(request):
@@ -34,7 +35,8 @@ urlpatterns = [
     # 新規追加：自治会ごとの公開ページ用URL (p = page/public の略)
     path('p/<slug:slug>/', bot_views.public_tenant_page, name='public_tenant_page'),
     # 新規追加：議事録作成サポート画面
-    path('minutes-support/', bot_views.minutes_support_page, name='minutes_support_page'),        
+    path('minutes-support/', bot_views.minutes_support_page, name='minutes_support_page'),
+    path('survey/<int:survey_id>/', events_views.survey_detail, name='survey_detail'),        
 ]
 
 # アップロードされたメディアファイル（PDFや画像）を表示するための設定

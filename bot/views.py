@@ -12,14 +12,14 @@ import time
 import re
 import traceback
 
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityEmergencyEvent, CityEmergencyResponse
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityEmergencyEvent, CityEmergencyResponse, PublicPageConfig
 from members.models import AiMember
 
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from library.models import LibraryDocument
 from django.core.paginator import Paginator
-from events.models import Event, Announcement
+from events.models import Event, Announcement, Survey
 
 @login_required
 def library_list(request):
@@ -586,43 +586,16 @@ def callback(request, politician_slug):
     return HttpResponse("OK")
 
 def public_tenant_page(request, slug):
-    """各自治会の専用ホームページを表示するビュー"""
-    
-    # 1. URLのslugから自治会を取得（存在しない場合は自動で404エラー）
+    """自治会ポータルサイトのメインビュー（統合・完成版）"""
     politician = get_object_or_404(Politician, slug=slug)
 
-    # 🛡️ 運営側の防衛的視点: 設定が存在しない、または「非公開」の場合は強制ブロック
+    # 🛡️ 運営側の防衛的視点: 設定が存在しない、または「非公開」の場合はアクセスを強制遮断
     if not hasattr(politician, 'page_config') or not politician.page_config.is_public:
         raise Http404("このページは現在準備中、または非公開です。")
 
     config = politician.page_config
 
-    # 2. 連携機能のデータ取得（ONの場合のみDBにアクセスして負荷を減らす）
-    library_docs = []
-    if config.show_library:
-        # 最新の公開資料を5件だけ取得してトップページに表示
-        library_docs = LibraryDocument.active_objects.filter(
-            politician=politician, access_level='PUBLIC'
-        ).order_by('-fiscal_year', '-created_at')[:5]
-
-    context = {
-        'politician': politician,
-        'config': config,
-        'library_docs': library_docs,
-    }
-    return render(request, 'bot/tenant_page.html', context)
-
-def public_tenant_page(request, slug):
-    """自治会ポータルサイトのメインビュー"""
-    politician = get_object_or_404(Politician, slug=slug)
-
-    # 🛡️ 防衛的視点：非公開設定時はアクセス遮断
-    if not hasattr(politician, 'page_config') or not politician.page_config.is_public:
-        raise Http404("このページは現在準備中、または非公開です。")
-
-    config = politician.page_config
-
-    # --- 各種データの取得（表示設定がONの場合のみ取得） ---
+    # --- 各種データの取得（表示設定がONの場合のみクエリを発行し、DB負荷を最小化） ---
     library_docs = []
     announcements = []
     upcoming_events = []
@@ -639,22 +612,30 @@ def public_tenant_page(request, slug):
             politician=politician, is_active=True
         ).order_by('-created_at')[:5]
 
-    # 3. 行事（本日以降、かつ公開中のものを近い順に5件）
+    # 3. 行事予定（本日以降、かつ公開中のものを近い順に5件）
     if config.show_events:
-        # 🛡️ 防衛的視点：過去の行事を自動で非表示にし、管理者の消し忘れによる混乱を防ぐ
+        # 🛡️ トラブル予防仕様: 過去の行事を自動で隠し、役員の消し忘れによる住民の混乱を防ぐ
         upcoming_events = Event.objects.filter(
             politician=politician,
             is_active=True,
             start_time__gte=timezone.now()
         ).order_by('start_time')[:5]
 
-    return render(request, 'bot/tenant_page.html', {
+    # 4. 回覧板・アンケート（現在受付中のもの全て）
+    # 🛡️ トラブル予防仕様: 締切日時での自動非表示ではなく、役員が `is_active` で明示的にコントロールする設計
+    active_surveys = Survey.objects.filter(
+        politician=politician, is_active=True
+    ).order_by('deadline')
+
+    context = {
         'politician': politician,
         'config': config,
         'library_docs': library_docs,
         'announcements': announcements,
         'upcoming_events': upcoming_events,
-    })
+        'active_surveys': active_surveys,
+    }
+    return render(request, 'bot/tenant_page.html', context)
 
 # 🛡️ 運営側の防衛的視点: 役員（ログインユーザー）しか見られないように制限をかける
 @login_required

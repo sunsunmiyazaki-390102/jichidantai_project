@@ -1,4 +1,5 @@
 from django.db import models
+import uuid
 
 class Event(models.Model):
     politician = models.ForeignKey(
@@ -85,3 +86,51 @@ class Announcement(models.Model):
     class Meta:
         verbose_name = "お知らせ"
         verbose_name_plural = "お知らせ一覧"
+
+class Survey(models.Model):
+    """自治会の回覧板・アンケート本体"""
+    politician = models.ForeignKey(
+        'bot.Politician', on_delete=models.CASCADE, related_name='surveys', verbose_name='対象自治会'
+    )
+    title = models.CharField("タイトル（例：総会出欠確認）", max_length=200)
+    description = models.TextField("説明文・案内", blank=True)
+    deadline = models.DateTimeField("回答締切日時")
+    is_active = models.BooleanField("回答受付中", default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "アンケート・回覧板"
+        verbose_name_plural = "アンケート・回覧板一覧"
+
+    def __str__(self):
+        return f"[{self.politician.name}] {self.title}"
+
+class SurveyResponse(models.Model):
+    """住民からの回答データ"""
+    ATTENDANCE_CHOICES = [
+        ('出席_賛成', '出席（または賛成）'),
+        ('欠席_反対', '欠席（または反対）'),
+        ('未定_保留', '未定（または保留）'),
+    ]
+    
+    survey = models.ForeignKey(Survey, on_delete=models.CASCADE, related_name='responses')
+    respondent_name = models.CharField("回答者名（世帯主・班など）", max_length=100)
+    attendance = models.CharField("出欠・賛否", max_length=20, choices=ATTENDANCE_CHOICES, blank=True, null=True)
+    comment = models.TextField("ご意見・自由記述", blank=True)
+    
+    # 🛡️ 運営側の防衛的視点: 重複回答による集計の混乱を防ぐための追跡フィールド
+    session_key = models.CharField("ブラウザセッションID", max_length=100, blank=True)
+    ip_address = models.GenericIPAddressField("IPアドレス", blank=True, null=True)
+    submitted_at = models.DateTimeField("回答日時", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "回答データ"
+        verbose_name_plural = "回答データ一覧"
+        
+        # 🛡️ データベース駆動の防衛: 同一ブラウザから同一アンケートへの複数回送信をDBレベルでブロック
+        constraints = [
+            models.UniqueConstraint(fields=['survey', 'session_key'], name='unique_survey_response')
+        ]
+
+    def __str__(self):
+        return f"{self.respondent_name} - {self.attendance}"
