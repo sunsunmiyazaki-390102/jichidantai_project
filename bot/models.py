@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 import uuid
 import os
 
@@ -390,4 +391,27 @@ class PublicPageConfig(models.Model):
 
     def __str__(self):
         return f"{self.politician.name} のページ設定"
-           
+
+class BroadcastMessage(models.Model):
+    """LINE一斉送信メッセージ（誤送信防止・履歴管理用）"""
+    politician = models.ForeignKey(
+        'Politician', on_delete=models.CASCADE, related_name='broadcasts', verbose_name='対象自治会'
+    )
+    title = models.CharField("管理用タイトル（住民には見えません）", max_length=100, help_text="例：令和6年度 総会のお知らせ配信")
+    message_text = models.TextField("LINE送信テキスト", help_text="※実際に住民のLINEに届く文章です。URL等もここに含めてください。")
+    
+    # 🛡️ 運営側の防衛的視点: 即時送信させず、必ず「下書き」として保存させる
+    is_sent = models.BooleanField("送信済", default=False)
+    sent_at = models.DateTimeField("送信日時", null=True, blank=True)
+    target_count = models.IntegerField("送信成功人数", default=0, help_text="送信完了時にシステムが自動記録します")
+    created_at = models.DateTimeField("作成日時", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "LINE一斉送信メッセージ"
+        verbose_name_plural = "LINE一斉送信履歴"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        status = "✅ 送信済" if self.is_sent else "📝 未送信（下書き）"
+        return f"[{status}] {self.title}"
+               

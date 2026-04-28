@@ -4,11 +4,14 @@ from import_export.admin import ImportExportModelAdmin
 from import_export.widgets import DateWidget
 from django.utils.html import format_html
 
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityAdminProfile, CityEmergencyEvent, CityEmergencyResponse, CityMemberProfile, PublicPageConfig
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityAdminProfile, CityEmergencyEvent, CityEmergencyResponse, CityMemberProfile, PublicPageConfig, BroadcastMessage
 from linebot import LineBotApi
 from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, PostbackAction
+from linebot.exceptions import LineBotApiError
 from django.shortcuts import render
 from django.contrib.admin import helpers
+from django.utils import timezone
+from members.models import AiMember
 
 # ==========================================
 # 🛡️ 運営側の防衛的措置：テナント分離用・基底クラス
@@ -636,3 +639,87 @@ class PublicPageConfigAdmin(admin.ModelAdmin):
         return "ページを「公開」にして一度保存すると、ここにポスター印刷用のQRコードが自動生成されます。"
     
     qr_code_display.short_description = "回覧板・ポスター用QRコード"
+
+@admin.register(BroadcastMessage)
+class BroadcastMessageAdmin(admin.ModelAdmin):
+    list_display = ('title', 'politician', 'is_sent', 'sent_at', 'target_count')
+    list_filter = ('politician', 'is_sent')
+    search_fields = ('title', 'message_text')
+
+    actions = ['send_broadcast_action']
+    
+    # 🛡️ 防衛的設計: 送信済みのメッセージは改ざん（証拠隠滅）できないように読取専用にする
+    def get_readonly_fields(self, request, obj=None):
+        if obj and obj.is_sent:
+            return ['politician', 'title', 'message_text', 'is_sent', 'sent_at', 'target_count']
+        return ['is_sent', 'sent_at', 'target_count'] # 新規作成時はステータス類を触らせない
+
+    # 🛡️ 運営側の防衛的視点: 送信前の「確認画面」と「500人分割送信」のロジック
+    @admin.action(description='🚀 選択したメッセージをLINEで一斉送信する')
+    def send_broadcast_action(self, request, queryset):
+        # 1. 二重送信ブロック（送信済みのものは弾く）
+        if queryset.filter(is_sent=True).exists():
+            self.message_user(request, "エラー：既に送信済みのメッセージが含まれています。未送信のものだけを選択してください。", level=messages.ERROR)
+            return
+
+        # 2. 「はい、送信する（apply）」が押された場合の本処理
+        if request.POST.get('apply'):
+            success_count = 0
+            for msg in queryset:
+                politician = msg.politician
+                if not politician.line_access_token:
+                    continue
+                
+                line_bot_api = LineBotApi(politician.line_access_token)
+                # 対象自治会の住民を取得（LINE IDが登録されている人のみ）
+                members = AiMember.objects.filter(politician=politician).exclude(line_user_id__isnull=True).exclude(line_user_id__exact='')
+                target_user_ids = [m.line_user_id for m in members]
+                
+                if not target_user_ids:
+                    continue
+                
+                # 🛡️ API制限対策: 500人ずつに分割（Chunk）してMulticast送信
+                chunk_size = 500
+                sent_count = 0
+                for i in range(0, len(target_user_ids), chunk_size):
+                    chunk = target_user_ids[i:i + chunk_size]
+                    try:
+                        line_bot_api.multicast(chunk, TextSendMessage(text=msg.message_text))
+                        sent_count += len(chunk)
+                    except LineBotApiError as e:
+                        print(f"LINE Broadcast Error: {e}")
+                
+                # データベースのステータスを「送信済」にロック
+                msg.is_sent = True
+                msg.sent_at = timezone.now()
+                msg.target_count = sent_count
+                msg.save()
+                success_count += 1
+                
+            self.message_user(request, f"{success_count}件のメッセージを正式に配信しました。", level=messages.SUCCESS)
+            return
+
+        # 3. まだ「apply」が押されていない場合は、確認画面を表示する
+        preview_data = []
+        for msg in queryset:
+            members = AiMember.objects.filter(politician=msg.politician)
+            # 誰に送るのかを抜粋して表示（例: 坂井康夫、〇〇、... など計50名）
+            target_names = "、".join([m.real_name or m.line_display_name or "未設定" for m in members[:10]])
+            if members.count() > 10:
+                target_names += f" ...など計{members.count()}名"
+                
+            preview_data.append({
+                'event': msg,  # 以前作成した broadcast_confirm.html の変数名(event_data.event.title)に合わせる
+                'target_count': members.count(),
+                'target_names': target_names,
+            })
+            
+        context = {
+            **self.admin_site.each_context(request),
+            'title': '⚠️ LINE一斉送信の最終確認',
+            'preview_data': preview_data,
+            'queryset': queryset,
+            'action_name': 'send_broadcast_action',
+        }
+        return render(request, 'admin/broadcast_confirm.html', context)
+        

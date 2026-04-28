@@ -19,7 +19,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from library.models import LibraryDocument
 from django.core.paginator import Paginator
-from events.models import Event, Announcement, Survey
+from events.models import Event, Announcement, Survey, HolidayDutySchedule
 
 @login_required
 def library_list(request):
@@ -643,6 +643,20 @@ def public_tenant_page(request, slug):
         politician=politician, is_active=True
     ).order_by('deadline')
 
+    # ==========================================
+    # ▼▼▼ 🔴 新規追加：休日当番医の取得ロジック ▼▼▼
+    # ==========================================
+    today = timezone.localtime(timezone.now()).date()
+    tomorrow = today + timedelta(days=1)
+
+    # 🛡️ 防衛的視点: 医療機関情報は市町村全体で共通（テナント依存ではない）ため、
+    # politicianでの絞り込みは行わず、日付だけで抽出します。
+    duty_clinics = HolidayDutySchedule.objects.filter(
+        date__in=[today, tomorrow],
+        institution__is_active=True
+    ).select_related('institution').order_by('date', 'department')
+    # ==========================================    
+
     context = {
         'politician': politician,
         'config': config,
@@ -650,6 +664,8 @@ def public_tenant_page(request, slug):
         'announcements': announcements,
         'upcoming_events': upcoming_events,
         'active_surveys': active_surveys,
+        'duty_clinics': duty_clinics,
+        'today': today,
     }
     return render(request, 'bot/tenant_page.html', context)
 

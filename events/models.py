@@ -1,5 +1,6 @@
 from django.db import models
 import uuid
+import urllib.parse
 
 class Event(models.Model):
     politician = models.ForeignKey(
@@ -134,3 +135,55 @@ class SurveyResponse(models.Model):
 
     def __str__(self):
         return f"{self.respondent_name} - {self.attendance}"
+
+class MedicalInstitution(models.Model):
+    """医療機関マスタ（座標管理対応版）"""
+    name = models.CharField("医療機関名", max_length=100)
+    address = models.CharField("所在地", max_length=200)
+    phone = models.CharField("電話番号", max_length=20)
+    website_url = models.URLField("公式サイトURL", blank=True, null=True)
+    
+    # ▼ 新規追加：座標データ（小数点以下6桁で約10cmの精度を確保）
+    latitude = models.DecimalField("緯度", max_digits=9, decimal_places=6, blank=True, null=True, help_text="駐車場や入口の正確な緯度（例: 31.907713）")
+    longitude = models.DecimalField("経度", max_digits=9, decimal_places=6, blank=True, null=True, help_text="駐車場や入口の正確な経度（例: 131.420286）")
+    
+    is_active = models.BooleanField("有効", default=True)
+
+    class Meta:
+        verbose_name = "医療機関"
+        verbose_name_plural = "医療機関マスタ"
+
+    def __str__(self):
+        return self.name
+
+    # 🛡️ 運営側の防衛的視点: データベースにはURLを直接持たせず、座標から動的生成する
+    @property
+    def google_maps_url(self):
+        """座標があればピンポイント指定、なければ住所検索のURLを返す（フォールバック設計）"""
+        if self.latitude and self.longitude:
+            # 座標による完全なピンポイント指定（ナビゲーションの狂いなし）
+            return f"https://www.google.com/maps/search/?api=1&query={self.latitude},{self.longitude}"
+        elif self.address:
+            # 座標が未入力の場合は住所文字列で代替検索
+            query = urllib.parse.quote(f"{self.name} {self.address}")
+            return f"https://www.google.com/maps/search/?api=1&query={query}"
+        return ""
+
+class HolidayDutySchedule(models.Model):
+    """当番医スケジュール"""
+    institution = models.ForeignKey(
+        MedicalInstitution, on_delete=models.CASCADE, related_name='duties', verbose_name='当番医院'
+    )
+    date = models.DateField("当番日")
+    department = models.CharField("診療科目", max_length=50, help_text="例：内科、小児科")
+    note = models.CharField("備考", max_length=200, blank=True, help_text="例：受付は16時まで")
+
+    class Meta:
+        verbose_name = "在宅医スケジュール"
+        verbose_name_plural = "在宅医スケジュール一覧"
+        # 同じ日に同じ病院が重複登録されるのを防ぐ防衛的制約
+        unique_together = ['institution', 'date']
+
+    def __str__(self):
+        return f"{self.date} - {self.institution.name}"
+        

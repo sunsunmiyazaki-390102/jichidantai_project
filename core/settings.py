@@ -137,6 +137,11 @@ USE_I18N = True
 USE_L10N = True
 USE_TZ = True
 
+# ==========================================
+# Google Maps API Key
+# ==========================================
+GOOGLE_MAPS_API_KEY = 'AIzaSyA0X8JAMevCesNS9SBshTiWscXULjCokIA'
+
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
