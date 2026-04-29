@@ -5,7 +5,6 @@ from django.urls import path
 from django.utils.safestring import mark_safe
 from django.conf import settings
 from .models import Event, EventPhoto, Announcement, Survey, SurveyResponse, MedicalInstitution, HolidayDutySchedule
-
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
     # 一覧画面で表示する項目
@@ -81,24 +80,45 @@ class SurveyResponseAdmin(admin.ModelAdmin):
     search_fields = ('respondent_name', 'comment')
     readonly_fields = ('session_key', 'ip_address', 'submitted_at') # 追跡データは改ざん防止のため読取専用
 
+# 🛡️ 運営側の防衛的視点: Excelで開いた際の文字化けを完全防止するため「utf-8-sig」でレスポンスを返す
+@admin.action(description='選択した医療機関をCSVでバックアップ出力')
+def export_medical_institutions_csv(modeladmin, request, queryset):
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response['Content-Disposition'] = 'attachment; filename="medical_institutions_backup.csv"'
+    
+    writer = csv.writer(response)
+    # 抽出するヘッダー（将来のインポート時にそのまま使えるフォーマット）
+    writer.writerow(['病院名', '住所', '電話番号', '公式サイトURL', '緯度', '経度', '有効フラグ'])
+    
+    for obj in queryset:
+        writer.writerow([
+            obj.name,
+            obj.address,
+            obj.phone,
+            obj.website_url if obj.website_url else '',
+            obj.latitude if obj.latitude else '',
+            obj.longitude if obj.longitude else '',
+            '1' if obj.is_active else '0'
+        ])
+    return response
+
 @admin.register(MedicalInstitution)
 class MedicalInstitutionAdmin(admin.ModelAdmin):
     list_display = ('name', 'phone', 'latitude', 'longitude', 'is_active')
     search_fields = ('name', 'phone', 'address')
-    # 座標フィールドを数値として分かりやすく表示
     fields = ('name', 'address', 'phone', 'website_url', ('latitude', 'longitude'), 'map_canvas', 'is_active')
     readonly_fields = ('map_canvas',)
+    
+    # ▼ 新規追加: 作成したアクションを管理画面に登録
+    actions = [export_medical_institutions_csv]
 
     def map_canvas(self, obj):
-        # 🛡️ 変数を含まない静的HTMLのため mark_safe を使用
         return mark_safe(
             '<div id="admin-map" style="height: 400px; width: 100%; margin-bottom: 20px; border: 1px solid #ccc;"></div>'
             '<p class="help">地図をクリックするとピンが移動し、座標が自動入力されます。</p>'
         )
-    map_canvas.short_description = "位置調整（Google Maps）"
 
     class Media:
-        # 🛡️ 防衛的視点: 私たちが作った関数を先にブラウザに覚えさせてから、GoogleのAPIを呼ぶ
         js = (
             'js/admin_map.js',
             f'https://maps.googleapis.com/maps/api/js?key={settings.GOOGLE_MAPS_API_KEY}&callback=initMap',
