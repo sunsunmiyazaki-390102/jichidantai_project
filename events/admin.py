@@ -4,7 +4,15 @@ from django.http import HttpResponse
 from django.urls import path
 from django.utils.safestring import mark_safe
 from django.conf import settings
-from .models import Event, EventPhoto, Announcement, Survey, SurveyResponse, MedicalInstitution, HolidayDutySchedule
+from .models import Event, EventPhoto, Announcement, Survey, SurveyResponse, MedicalInstitution, HolidayDutySchedule, MedicalArea
+
+@admin.register(MedicalArea)
+class MedicalAreaAdmin(admin.ModelAdmin):
+    """医療圏マスタの管理画面"""
+    list_display = ('name', 'order')
+    list_editable = ('order',)
+    search_fields = ('name',)
+
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
     # 一覧画面で表示する項目
@@ -127,16 +135,26 @@ class MedicalInstitutionAdmin(admin.ModelAdmin):
 @admin.register(HolidayDutySchedule)
 class HolidayDutyScheduleAdmin(admin.ModelAdmin):
     """当番医スケジュールの管理画面"""
-    list_display = ('date', 'get_institution_name', 'department', 'get_institution_phone', 'note')
-    list_filter = ('date', 'department')
-    # 🛡️ 運営側の防衛的視点: 病院名は手入力させず、マスタから検索・選択させる
+    # 修正: department を get_department (マスタからの呼び出し) に変更
+    list_display = ('date', 'get_institution_name', 'get_department', 'get_institution_phone', 'note')
+    
+    # 修正: マスタ側の department を使って絞り込みを行う
+    list_filter = ('date', 'institution__department')
+    
     autocomplete_fields = ['institution'] 
     date_hierarchy = 'date'
-    list_editable = ('department', 'note')
+    
+    # 修正: department はマスタの管轄になったため、ここでの直接編集(list_editable)から外す
+    list_editable = ('note',)
 
     def get_institution_name(self, obj):
         return obj.institution.name
     get_institution_name.short_description = '当番医院'
+
+    # 新規追加: マスタ側から診療科目を引っ張ってきて表示する
+    def get_department(self, obj):
+        return obj.institution.department
+    get_department.short_description = '診療科目'
 
     def get_institution_phone(self, obj):
         return obj.institution.phone

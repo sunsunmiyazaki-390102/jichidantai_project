@@ -391,6 +391,14 @@ class PublicPageConfig(models.Model):
 
     def __str__(self):
         return f"{self.politician.name} のページ設定"
+    
+    # ▼▼▼ 新規追加: 医療圏の複数選択フィールド ▼▼▼
+    target_medical_areas = models.ManyToManyField(
+        'events.MedicalArea', 
+        blank=True, 
+        verbose_name="表示対象の医療圏",
+        help_text="この地域にお住まいの住民へ表示する当番医のエリアを選択してください。"
+    )    
 
 class BroadcastMessage(models.Model):
     """LINE一斉送信メッセージ（誤送信防止・履歴管理用）"""

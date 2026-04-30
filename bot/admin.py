@@ -604,10 +604,12 @@ class PublicPageConfigAdmin(admin.ModelAdmin):
     list_filter = ('is_public',)
     search_fields = ('politician__name',)
 
-    # 🔴 追記：管理画面でのみ表示する「読み取り専用」の項目を追加
+    # 🔴 追記：ManyToMany項目を左右のボックスで直感的に選択可能にする
+    # 🛡️ 運営側の防衛的視点: 標準の複数選択（Ctrl+クリック）は操作ミスが多いため、このUIを強制する
+    filter_horizontal = ('target_medical_areas',)
+
     readonly_fields = ('qr_code_display',)    
     
-    # 運営側の防衛的視点: 項目をグループ化して、素人（自治会の役員）が見ても迷わないUI構成にする
     fieldsets = (
         ('基本設定', {
             'fields': ('politician', 'is_public', 'qr_code_display')
@@ -615,19 +617,22 @@ class PublicPageConfigAdmin(admin.ModelAdmin):
         ('デザイン・レイアウト', {
             'fields': ('main_visual', 'accent_color', 'welcome_text')
         }),
-        ('表示機能のON/OFF', {
-            'fields': ('show_announcements', 'show_events', 'show_library'),
-            'description': '※各機能をホームページ上に表示するかどうかを選択します。'
+        ('表示・配信機能の制御', {
+            # 🔴 追記：target_medical_areas を追加
+            'fields': (
+                'show_announcements', 
+                'show_events', 
+                'show_library', 
+                'target_medical_areas'
+            ),
+            'description': '※各機能の表示スイッチ、およびこの自治会ページに表示する「医療圏」を選択してください。'
         }),
     )
 
-    # 🛡️ 運営側の防衛的視点: ライブラリ追加不要・DB保存不要で動的にQRコードを生成するメソッド
     def qr_code_display(self, obj):
         # 設定が保存されており、かつ公開状態の場合のみQRを表示
         if obj.pk and obj.is_public and obj.politician.slug:
-            # 本番環境のURLを自動生成
             target_url = f"https://jichidantai.jp/p/{obj.politician.slug}/"
-            # 外部APIを使って動的にQR画像を取得
             api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={target_url}"
             
             return format_html(
@@ -638,9 +643,8 @@ class PublicPageConfigAdmin(admin.ModelAdmin):
             )
         return "ページを「公開」にして一度保存すると、ここにポスター印刷用のQRコードが自動生成されます。"
     
-    qr_code_display.short_description = "回覧板・ポスター用QRコード"
-
-@admin.register(BroadcastMessage)
+    qr_code_display.short_description = "回覧板・ポスター用QRコード"    
+    
 class BroadcastMessageAdmin(admin.ModelAdmin):
     list_display = ('title', 'politician', 'is_sent', 'sent_at', 'target_count')
     list_filter = ('politician', 'is_sent')

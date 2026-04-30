@@ -644,18 +644,26 @@ def public_tenant_page(request, slug):
     ).order_by('deadline')
 
     # ==========================================
-    # ▼▼▼ 🔴 新規追加：休日当番医の取得ロジック ▼▼▼
+    # ▼▼▼ 休日当番医の取得ロジック ▼▼▼
     # ==========================================
     today = timezone.localtime(timezone.now()).date()
     tomorrow = today + timedelta(days=1)
 
-    # 🛡️ 防衛的視点: 医療機関情報は市町村全体で共通（テナント依存ではない）ため、
-    # politicianでの絞り込みは行わず、日付だけで抽出します。
-    duty_clinics = HolidayDutySchedule.objects.filter(
-        date__in=[today, tomorrow],
-        institution__is_active=True
-    ).select_related('institution').order_by('date', 'department')
-    # ==========================================    
+    # テナント（自治会）が設定している医療圏のIDリストを取得
+    target_area_ids = config.target_medical_areas.values_list('id', flat=True)
+
+    if target_area_ids:
+        duty_clinics = HolidayDutySchedule.objects.filter(
+            date__in=[today, tomorrow],
+            institution__is_active=True,
+            institution__area__in=target_area_ids
+        ).select_related('institution').order_by(
+            'date', 
+            'institution__department', # 🛡️ 修正: マスタ(institution)側の診療科目でソート
+            'institution__name_kana'   # 🛡️ 追加: ふりがな順（五十音順）で美しくソート
+        )
+    else:
+        duty_clinics = []
 
     context = {
         'politician': politician,
