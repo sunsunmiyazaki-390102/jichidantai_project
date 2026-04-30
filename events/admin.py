@@ -112,9 +112,27 @@ def export_medical_institutions_csv(modeladmin, request, queryset):
 
 @admin.register(MedicalInstitution)
 class MedicalInstitutionAdmin(admin.ModelAdmin):
-    list_display = ('name', 'phone', 'latitude', 'longitude', 'is_active')
-    search_fields = ('name', 'phone', 'address')
-    fields = ('name', 'address', 'phone', 'website_url', ('latitude', 'longitude'), 'map_canvas', 'is_active')
+    # 🛡️ 変更: 一覧画面にふりがな、診療科目、医療圏を追加
+    list_display = ('name', 'name_kana', 'department', 'area', 'phone', 'is_active')
+    
+    # 🛡️ 変更: 検索ボックスで「ひらがな」や「診療科目」でも検索できるように強化（既存の電話・住所検索も維持）
+    search_fields = ('name', 'name_kana', 'department', 'phone', 'address')
+    
+    # 🛡️ 新規追加: 右側に「医療圏」と「有効/無効」の絞り込みフィルターを追加
+    list_filter = ('area', 'is_active')
+    
+    # 🛡️ 変更: 編集画面のレイアウトを整理（関連する項目を横並びに配置して入力負担を軽減）
+    fields = (
+        ('name', 'name_kana'),      # 病院名とふりがなを横並び
+        ('area', 'department'),     # 医療圏と診療科目を横並び
+        'address', 
+        'phone', 
+        'website_url', 
+        ('latitude', 'longitude'),  # 緯度経度を横並び
+        'map_canvas', 
+        'is_active'
+    )
+    
     readonly_fields = ('map_canvas',)
     
     # ▼ 新規追加: 作成したアクションを管理画面に登録

@@ -644,26 +644,32 @@ def public_tenant_page(request, slug):
     ).order_by('deadline')
 
     # ==========================================
-    # ▼▼▼ 休日当番医の取得ロジック ▼▼▼
+    # ▼▼▼ 休日当番医の取得ロジック（直近2日間自動抽出版） ▼▼▼
     # ==========================================
     today = timezone.localtime(timezone.now()).date()
-    tomorrow = today + timedelta(days=1)
-
-    # テナント（自治会）が設定している医療圏のIDリストを取得
     target_area_ids = config.target_medical_areas.values_list('id', flat=True)
 
+    duty_clinics = []
     if target_area_ids:
-        duty_clinics = HolidayDutySchedule.objects.filter(
-            date__in=[today, tomorrow],
+        # 1. 今日以降で、当番医が登録されている「日付のみ」を昇順で2つ取得（例：次の日曜日と祝日）
+        upcoming_dates = HolidayDutySchedule.objects.filter(
+            date__gte=today,
             institution__is_active=True,
             institution__area__in=target_area_ids
-        ).select_related('institution').order_by(
-            'date', 
-            'institution__department', # 🛡️ 修正: マスタ(institution)側の診療科目でソート
-            'institution__name_kana'   # 🛡️ 追加: ふりがな順（五十音順）で美しくソート
-        )
-    else:
-        duty_clinics = []
+        ).order_by('date').values_list('date', flat=True).distinct()[:2]
+
+        # 2. 取得した直近2日分の日付に該当する病院を一括取得
+        if upcoming_dates:
+            duty_clinics = HolidayDutySchedule.objects.filter(
+                date__in=upcoming_dates,
+                institution__is_active=True,
+                institution__area__in=target_area_ids
+            ).select_related('institution').order_by(
+                'date', 
+                'institution__department', 
+                'institution__name_kana'
+            )
+    # ==========================================
 
     context = {
         'politician': politician,
