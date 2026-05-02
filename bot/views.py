@@ -12,7 +12,7 @@ import time
 import re
 import traceback
 
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityEmergencyEvent, CityEmergencyResponse, PublicPageConfig
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityEmergencyEvent, CityEmergencyResponse, PublicPageConfig, Condolence
 from members.models import AiMember
 
 from django.shortcuts import render
@@ -20,6 +20,7 @@ from django.contrib.auth.decorators import login_required
 from library.models import LibraryDocument
 from django.core.paginator import Paginator
 from events.models import Event, Announcement, Survey, HolidayDutySchedule
+from django.db.models import Q
 
 @login_required
 def library_list(request):
@@ -630,7 +631,6 @@ def public_tenant_page(request, slug):
 
     # 3. 行事予定（本日以降、かつ公開中のものを近い順に5件）
     if config.show_events:
-        # 🛡️ トラブル予防仕様: 過去の行事を自動で隠し、役員の消し忘れによる住民の混乱を防ぐ
         upcoming_events = Event.objects.filter(
             politician=politician,
             is_active=True,
@@ -638,7 +638,6 @@ def public_tenant_page(request, slug):
         ).order_by('start_time')[:5]
 
     # 4. 回覧板・アンケート（現在受付中のもの全て）
-    # 🛡️ トラブル予防仕様: 締切日時での自動非表示ではなく、役員が `is_active` で明示的にコントロールする設計
     active_surveys = Survey.objects.filter(
         politician=politician, is_active=True
     ).order_by('deadline')
@@ -651,14 +650,12 @@ def public_tenant_page(request, slug):
 
     duty_clinics = []
     if target_area_ids:
-        # 1. 今日以降で、当番医が登録されている「日付のみ」を昇順で2つ取得（例：次の日曜日と祝日）
         upcoming_dates = HolidayDutySchedule.objects.filter(
             date__gte=today,
             institution__is_active=True,
             institution__area__in=target_area_ids
         ).order_by('date').values_list('date', flat=True).distinct()[:2]
 
-        # 2. 取得した直近2日分の日付に該当する病院を一括取得
         if upcoming_dates:
             duty_clinics = HolidayDutySchedule.objects.filter(
                 date__in=upcoming_dates,
@@ -669,8 +666,24 @@ def public_tenant_page(request, slug):
                 'institution__department', 
                 'institution__name_kana'
             )
-    # ==========================================
 
+    # ==========================================
+    # ▼▼▼ おくやみ情報の取得ロジック ▼▼▼
+    # ==========================================
+    target_mun_ids = config.target_condolence_areas.values_list('id', flat=True)
+    
+    condolences = []
+    if target_mun_ids:
+        two_days_ago = timezone.now() - timedelta(days=2)
+
+        # データベースレベルでフィルタリング（超高速処理）
+        condolences = Condolence.objects.filter(
+            funeral_hall__municipality__id__in=target_mun_ids
+        ).filter(
+            Q(funeral_datetime__gte=two_days_ago) | Q(funeral_datetime__isnull=True)
+        ).select_related('funeral_hall').order_by('-funeral_datetime')
+
+    # コンテキストの作成（辞書の重複キーも修正済み）
     context = {
         'politician': politician,
         'config': config,
@@ -680,6 +693,7 @@ def public_tenant_page(request, slug):
         'active_surveys': active_surveys,
         'duty_clinics': duty_clinics,
         'today': today,
+        'condolences': condolences,
     }
     return render(request, 'bot/tenant_page.html', context)
 
@@ -705,3 +719,4 @@ def minutes_support_page(request):
         'expert_prompt': expert_prompt,
     }
     return render(request, 'bot/minutes_support.html', context)
+

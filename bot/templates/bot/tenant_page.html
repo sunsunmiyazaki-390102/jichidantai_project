@@ -97,6 +97,57 @@
         </details>
         {% endif %}
 
+        {% if condolences %}
+        <!-- 🛡️ 第1階層：大見出し「おくやみ」 -->
+        <details style="margin-bottom: 2rem; border: 2px solid #333; border-radius: 8px; overflow: hidden; background-color: #fff;">
+            <summary style="background-color: #333; color: white; padding: 15px; text-align: center; font-weight: bold; cursor: pointer;">
+                ⬛ おくやみ情報（タップで開閉）
+            </summary>
+            
+            <div style="padding: 15px; background-color: #f8f9fa;">
+                {% for item in condolences %}
+                
+                <!-- 🛡️ 第2階層：故人情報 -->
+                <details style="margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; background-color: #fff;">
+                    <summary style="padding: 12px; font-weight: bold; cursor: pointer; border-bottom: 1px solid #eee;">
+                        故人：{{ item.deceased_name }} 様 {% if item.age %}({{ item.age }}歳){% endif %}
+                        <span style="display: block; font-size: 0.85rem; color: #666; margin-top: 5px;">
+                            ご住所: {{ item.deceased_address }}
+                        </span>
+                    </summary>
+                    
+                    <!-- 🛡️ 第3階層：葬儀情報・葬祭場情報 -->
+                    <div style="padding: 15px; font-size: 0.95rem; line-height: 1.6;">
+                        <h5 style="margin: 0 0 10px 0; border-left: 4px solid #333; padding-left: 8px;">葬儀情報（{{ item.ceremony_type }}）</h5>
+                        <p style="margin-bottom: 15px;">
+                            <strong>通夜:</strong> {% if item.wake_datetime %}{{ item.wake_datetime|date:"Y年n月j日(D) H:i" }}～{% else %}未定・なし{% endif %}<br>
+                            <strong>告別式:</strong> {% if item.funeral_datetime %}{{ item.funeral_datetime|date:"Y年n月j日(D) H:i" }}～{% else %}未定{% endif %}
+                        </p>
+
+                        {% if item.funeral_hall %}
+                        <h5 style="margin: 0 0 10px 0; border-left: 4px solid #333; padding-left: 8px;">葬祭場情報</h5>
+                        <div style="background-color: #f1f3f5; padding: 10px; border-radius: 5px;">
+                            <strong>{{ item.funeral_hall.name }}</strong><br>
+                            📍 {{ item.funeral_hall.address }}<br>
+                            📞 <a href="tel:{{ item.funeral_hall.phone }}">{{ item.funeral_hall.phone }}</a>
+                            
+                            {% if item.funeral_hall.latitude and item.funeral_hall.longitude %}
+                            <div style="margin-top: 10px; text-align: center;">
+                                <a href="https://www.google.com/maps/search/?api=1&query={{ item.funeral_hall.latitude }},{{ item.funeral_hall.longitude }}" target="_blank" style="display: inline-block; background-color: #17a2b8; color: white; padding: 8px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 0.9rem; width: 100%; box-sizing: border-box;">
+                                    🗺️ 会場の地図を見る
+                                </a>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </details>
+                
+                {% endfor %}
+            </div>
+        </details>
+        {% endif %}        
+
         {% if active_surveys %}
         <div class="card" style="border: 2px solid #3498db;">
             <h3 class="card-title">📝 回覧板・アンケート（ご回答のお願い）</h3>

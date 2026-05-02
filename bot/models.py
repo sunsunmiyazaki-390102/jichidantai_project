@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
+from datetime import timedelta
 import uuid
 import os
 
@@ -398,7 +399,14 @@ class PublicPageConfig(models.Model):
         blank=True, 
         verbose_name="表示対象の医療圏",
         help_text="この地域にお住まいの住民へ表示する当番医のエリアを選択してください。"
-    )    
+    )
+    
+    target_condolence_areas = models.ManyToManyField(
+        'Municipality', # ←上で定義した市町村マスタクラス名
+        blank=True, 
+        verbose_name="おくやみ情報の表示エリア",
+        help_text="この自治会ページに表示するおくやみ情報の市町村を選択してください。（例：宮崎市と近隣市町村を選択）"
+    )       
 
 class BroadcastMessage(models.Model):
     """LINE一斉送信メッセージ（誤送信防止・履歴管理用）"""
@@ -422,4 +430,70 @@ class BroadcastMessage(models.Model):
     def __str__(self):
         status = "✅ 送信済" if self.is_sent else "📝 未送信（下書き）"
         return f"[{status}] {self.title}"
-               
+
+ # ==========================================
+# 1. 市町村マスタ（新規追加：将来の県全域・全国展開用）
+# ==========================================
+class Municipality(models.Model):
+    prefecture = models.CharField("都道府県", max_length=10, default="宮崎県")
+    name = models.CharField("市町村名", max_length=50, help_text="例：宮崎市、都城市")
+
+    class Meta:
+        verbose_name = "市町村"
+        verbose_name_plural = "市町村マスタ"
+        ordering = ['prefecture', 'name']
+
+    def __str__(self):
+        return f"{self.prefecture} {self.name}"
+
+# ==========================================
+# 2. 葬祭場マスタ（市町村マスタと紐付け）
+# ==========================================
+class FuneralHall(models.Model):
+    name = models.CharField("葬祭場名", max_length=100)
+    # 🛡️ 拡張性: 葬儀場が「どの市町村にあるか」を持たせる
+    municipality = models.ForeignKey(Municipality, on_delete=models.PROTECT, verbose_name="所在市町村", null=True)
+    address = models.CharField("所在地", max_length=200)
+    phone = models.CharField("電話番号", max_length=20, blank=True)
+    latitude = models.DecimalField("緯度", max_digits=9, decimal_places=6, blank=True, null=True)
+    longitude = models.DecimalField("経度", max_digits=9, decimal_places=6, blank=True, null=True)
+
+    class Meta:
+        verbose_name = "葬祭場"
+        verbose_name_plural = "葬祭場マスタ"
+        ordering = ['municipality', 'name']
+
+    def __str__(self):
+        return self.name
+
+# ==========================================
+# 3. おくやみ情報（テナント依存から独立した純粋なトランザクション）
+# ==========================================
+class Condolence(models.Model):
+    CEREMONY_CHOICES = [
+        ('仏式', '仏式'),
+        ('神式', '神式'),
+        ('キリスト教式', 'キリスト教式'),
+        ('無宗教', '無宗教'),
+        ('未定・その他', '未定・その他'),
+    ]
+
+    # 故人の情報
+    deceased_name = models.CharField("故人氏名", max_length=100)
+    age = models.PositiveIntegerField("年齢", null=True, blank=True)
+    deceased_address = models.CharField("住所", max_length=100)
+    
+    # 葬儀情報
+    wake_datetime = models.DateTimeField("通夜 日時", null=True, blank=True)
+    funeral_datetime = models.DateTimeField("告別式 日時", null=True, blank=True)
+    ceremony_type = models.CharField("葬儀種別", max_length=20, choices=CEREMONY_CHOICES, default='仏式')
+    
+    # 葬祭場
+    funeral_hall = models.ForeignKey(FuneralHall, on_delete=models.PROTECT, verbose_name="葬祭場", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "おくやみ情報"
+        verbose_name_plural = "おくやみ情報一覧"
+
+    def __str__(self):
+        return f"{self.deceased_name} 様 ({self.funeral_datetime.strftime('%Y/%m/%d') if self.funeral_datetime else '日程未定'})"

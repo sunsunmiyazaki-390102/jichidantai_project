@@ -4,7 +4,7 @@ from import_export.admin import ImportExportModelAdmin
 from import_export.widgets import DateWidget
 from django.utils.html import format_html
 
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityAdminProfile, CityEmergencyEvent, CityEmergencyResponse, CityMemberProfile, PublicPageConfig, BroadcastMessage
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityAdminProfile, CityEmergencyEvent, CityEmergencyResponse, CityMemberProfile, PublicPageConfig, BroadcastMessage, Municipality, FuneralHall, Condolence
 from linebot import LineBotApi
 from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, PostbackAction
 from linebot.exceptions import LineBotApiError
@@ -597,16 +597,15 @@ class CityMemberProfileAdmin(admin.ModelAdmin):
     # ▼▼▼ 新規追加：スーパーユーザー以外はメニューから隠す ▼▼▼
     def has_module_permission(self, request):
         return request.user.is_superuser
-    
+
 @admin.register(PublicPageConfig)
 class PublicPageConfigAdmin(admin.ModelAdmin):
     list_display = ('politician', 'is_public', 'updated_at')
     list_filter = ('is_public',)
     search_fields = ('politician__name',)
 
-    # 🔴 追記：ManyToMany項目を左右のボックスで直感的に選択可能にする
-    # 🛡️ 運営側の防衛的視点: 標準の複数選択（Ctrl+クリック）は操作ミスが多いため、このUIを強制する
-    filter_horizontal = ('target_medical_areas',)
+    # 🛡️ 医療圏とおくやみエリア（市町村）の両方を左右のボックスUIにする
+    filter_horizontal = ('target_medical_areas', 'target_condolence_areas') 
 
     readonly_fields = ('qr_code_display',)    
     
@@ -618,14 +617,15 @@ class PublicPageConfigAdmin(admin.ModelAdmin):
             'fields': ('main_visual', 'accent_color', 'welcome_text')
         }),
         ('表示・配信機能の制御', {
-            # 🔴 追記：target_medical_areas を追加
+            # 🔴 ここに target_condolence_areas を追加する
             'fields': (
                 'show_announcements', 
                 'show_events', 
                 'show_library', 
-                'target_medical_areas'
+                'target_medical_areas',
+                'target_condolence_areas' 
             ),
-            'description': '※各機能の表示スイッチ、およびこの自治会ページに表示する「医療圏」を選択してください。'
+            'description': '※各機能の表示スイッチ、およびこの自治会ページに表示する「医療圏」と「おくやみ情報の対象市町村」を選択してください。'
         }),
     )
 
@@ -726,4 +726,23 @@ class BroadcastMessageAdmin(admin.ModelAdmin):
             'action_name': 'send_broadcast_action',
         }
         return render(request, 'admin/broadcast_confirm.html', context)
-        
+
+# 1. 市町村マスタの登録
+@admin.register(Municipality)
+class MunicipalityAdmin(admin.ModelAdmin):
+    list_display = ('prefecture', 'name')
+    search_fields = ('name',)
+
+# 2. 葬祭場マスタの登録
+@admin.register(FuneralHall)
+class FuneralHallAdmin(admin.ModelAdmin):
+    list_display = ('name', 'municipality', 'phone')
+    list_filter = ('municipality',)
+    search_fields = ('name', 'address')
+
+# 3. おくやみ情報の登録（管理者の一元入力用）
+@admin.register(Condolence)
+class CondolenceAdmin(admin.ModelAdmin):
+    list_display = ('deceased_name', 'funeral_hall', 'funeral_datetime')
+    list_filter = ('funeral_hall__municipality', 'ceremony_type') # 市町村で絞り込み可能
+    search_fields = ('deceased_name', 'deceased_address')
