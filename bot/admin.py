@@ -12,6 +12,8 @@ from django.shortcuts import render
 from django.contrib.admin import helpers
 from django.utils import timezone
 from members.models import AiMember
+from django.conf import settings
+from django.utils.safestring import mark_safe
 
 # ==========================================
 # 🛡️ 運営側の防衛的措置：テナント分離用・基底クラス
@@ -739,6 +741,22 @@ class FuneralHallAdmin(admin.ModelAdmin):
     list_display = ('name', 'municipality', 'phone')
     list_filter = ('municipality',)
     search_fields = ('name', 'address')
+
+    # 🛡️ 変更点: 医療機関マスタと同じ地図連携（緯度経度の自動入力）を追加
+    fields = ('name', 'municipality', 'address', 'phone', ('latitude', 'longitude'), 'map_canvas')
+    readonly_fields = ('map_canvas',)
+
+    def map_canvas(self, obj):
+        return mark_safe(
+            '<div id="admin-map" style="height: 400px; width: 100%; margin-bottom: 20px; border: 1px solid #ccc;"></div>'
+            '<p class="help">地図をクリックするとピンが移動し、座標が自動入力されます。</p>'
+        )
+
+    class Media:
+        js = (
+            'js/admin_map.js',
+            f'https://maps.googleapis.com/maps/api/js?key={settings.GOOGLE_MAPS_API_KEY}&callback=initMap',
+        )
 
 # 3. おくやみ情報の登録（管理者の一元入力用）
 @admin.register(Condolence)

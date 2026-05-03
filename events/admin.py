@@ -153,23 +153,29 @@ class MedicalInstitutionAdmin(admin.ModelAdmin):
 @admin.register(HolidayDutySchedule)
 class HolidayDutyScheduleAdmin(admin.ModelAdmin):
     """当番医スケジュールの管理画面"""
-    # 修正: department を get_department (マスタからの呼び出し) に変更
     list_display = ('date', 'get_institution_name', 'get_department', 'get_institution_phone', 'note')
     
-    # 修正: マスタ側の department を使って絞り込みを行う
+    # マスタ側の department を使って絞り込みを行う
     list_filter = ('date', 'institution__department')
     
-    autocomplete_fields = ['institution'] 
-    date_hierarchy = 'date'
+    # 🛡️ 変更点: 完全な「プルダウン」として表示させるため、検索ボックス化を無効（コメントアウト）にする
+    # autocomplete_fields = ['institution'] 
     
-    # 修正: department はマスタの管轄になったため、ここでの直接編集(list_editable)から外す
+    date_hierarchy = 'date'
     list_editable = ('note',)
+
+    # 🛡️ 運営側の防衛的視点: Djangoのデフォルト動作を上書きし、プルダウンを「ふりがな順」に強制する
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "institution":
+            from .models import MedicalInstitution
+            # データベースレベルで name_kana の昇順（あいうえお順）で並び替え
+            kwargs["queryset"] = MedicalInstitution.objects.order_by('name_kana', 'name')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def get_institution_name(self, obj):
         return obj.institution.name
     get_institution_name.short_description = '当番医院'
 
-    # 新規追加: マスタ側から診療科目を引っ張ってきて表示する
     def get_department(self, obj):
         return obj.institution.department
     get_department.short_description = '診療科目'

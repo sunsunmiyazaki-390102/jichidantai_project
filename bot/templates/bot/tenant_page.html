@@ -44,54 +44,50 @@
         </div>
 
         {% if duty_clinics %}
-        <!-- 🛡️ 運営側の防衛的視点: 外部JavaScriptに依存しないHTML5ネイティブのアコーディオン（details/summary）を採用 -->
+        <!-- 🛡️ 第1階層：大見出し（おくやみ情報と統一したデザイン） -->
         <details style="margin-bottom: 2rem; border: 2px solid #dc3545; border-radius: 8px; overflow: hidden; background-color: #fff;">
-            <!-- 1段階目（クリックするボタン部分） -->
             <summary style="background-color: #dc3545; color: white; padding: 15px; text-align: center; font-weight: bold; cursor: pointer;">
                 🚨 休日・夜間 在宅当番医を確認する（タップで開閉）
             </summary>
             
-            <!-- 2段階目（開いた後の詳細表示部分） -->
             <div style="padding: 15px; background-color: #fff9fa;">
-                <p style="color: #dc3545; font-size: 0.85rem; font-weight: bold; text-align: center; margin-bottom: 15px;">
-                    ※受診前に必ず電話で開院状況を確認してください。
-                </p>
+                <p style="color: #dc3545; font-size: 0.85rem; font-weight: bold; text-align: center; margin-bottom: 15px;">※受診前に必ず電話で開院状況を確認してください。</p>
 
-                {% for clinic in duty_clinics %}
-                <div style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                    <h5 style="margin-top: 0; margin-bottom: 10px; font-weight: bold; color: #333;">
-                        <span style="background-color: #007bff; color: white; padding: 3px 8px; border-radius: 4px; font-size: 0.8rem; margin-right: 5px;">
-                            {{ clinic.institution.department }}
-                        </span>
-                        {{ clinic.institution.name }}
-                    </h5>
-
-                    <p style="font-size: 0.9rem; color: #555; margin-bottom: 15px; line-height: 1.5;">
-                        📅 <strong>当番日:</strong> {{ clinic.date|date:"n月j日(D)" }}<br>
-                        📍 <strong>所在地:</strong> {{ clinic.institution.address }}<br>
-                        {% if clinic.note %}
-                        <span style="color: #888;">📝 {{ clinic.note }}</span>
-                        {% endif %}
-                    </p>
-
-                    <div style="display: flex; gap: 8px;">
-                        <a href="tel:{{ clinic.institution.phone }}" style="flex: 1; text-align: center; background-color: #28a745; color: white; padding: 10px 5px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 0.9rem;">
-                            📞 電話
-                        </a>
-
-                        {% if clinic.institution.google_maps_url %}
-                        <a href="{{ clinic.institution.google_maps_url }}" target="_blank" style="flex: 1; text-align: center; background-color: #17a2b8; color: white; padding: 10px 5px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 0.9rem;">
-                            🗺️ 地図
-                        </a>
-                        {% endif %}
-
-                        {% if clinic.institution.website_url %}
-                        <a href="{{ clinic.institution.website_url }}" target="_blank" style="flex: 1; text-align: center; background-color: #f8f9fa; color: #333; border: 1px solid #ccc; padding: 10px 5px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 0.9rem;">
-                            🌐 サイト
-                        </a>
-                        {% endif %}
+                <!-- 🛡️ 日付ごとにデータをグループ化 -->
+                {% regroup duty_clinics by date as date_list %}
+                {% for date_group in date_list %}
+                
+                <!-- 🛡️ 第2階層：日付（タップで開閉） -->
+                <details style="margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; background-color: #fff;">
+                    <summary style="padding: 12px; font-weight: bold; cursor: pointer; border-bottom: 1px solid #eee; background-color: #fdfdfd;">
+                        📅 {{ date_group.grouper|date:"n月j日(D)" }} の当番医
+                    </summary>
+                    
+                    <!-- 🛡️ 第3階層：該当日の病院リスト -->
+                    <div style="padding: 15px;">
+                        {% for clinic in date_group.list %}
+                        <div style="margin-bottom: {% if not forloop.last %}15px{% else %}0{% endif %}; padding-bottom: {% if not forloop.last %}15px{% else %}0{% endif %}; border-bottom: {% if not forloop.last %}1px dashed #ccc{% else %}none{% endif %};">
+                            <h5 style="margin-top: 0; margin-bottom: 10px; font-weight: bold; color: #333;">
+                                <span style="background-color: #007bff; color: white; padding: 3px 8px; border-radius: 4px; font-size: 0.8rem; margin-right: 5px;">{{ clinic.institution.department }}</span>
+                                {{ clinic.institution.name }}
+                            </h5>
+                            <p style="font-size: 0.9rem; color: #555; margin-bottom: 10px;">
+                                📍 {{ clinic.institution.address }}<br>
+                                {% if clinic.note %}<span style="color: #888;">📝 {{ clinic.note }}</span>{% endif %}
+                            </p>
+                            <div style="display: flex; gap: 8px;">
+                                <a href="tel:{{ clinic.institution.phone }}" style="flex: 1; text-align: center; background-color: #28a745; color: white; padding: 8px 5px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 0.85rem;">📞 電話</a>
+                                {% if clinic.institution.google_maps_url %}
+                                <a href="{{ clinic.institution.google_maps_url }}" target="_blank" style="flex: 1; text-align: center; background-color: #17a2b8; color: white; padding: 8px 5px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 0.85rem;">🗺️ 地図</a>
+                                {% endif %}
+                                {% if clinic.institution.website_url %}
+                                <a href="{{ clinic.institution.website_url }}" target="_blank" style="flex: 1; text-align: center; background-color: #f8f9fa; color: #333; border: 1px solid #ccc; padding: 8px 5px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 0.85rem;">🌐 サイト</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
                     </div>
-                </div>
+                </details>
                 {% endfor %}
             </div>
         </details>
