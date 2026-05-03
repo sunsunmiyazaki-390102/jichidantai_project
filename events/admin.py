@@ -165,27 +165,38 @@ class MedicalInstitutionAdmin(admin.ModelAdmin):
                     count += 1
         self.message_user(request, f"{count}件の医療機関のふりがな（見えない空白）を修正しました！")
 
-
 @admin.register(HolidayDutySchedule)
 class HolidayDutyScheduleAdmin(admin.ModelAdmin):
     """当番医スケジュールの管理画面"""
     list_display = ('date', 'get_institution_name', 'get_department', 'get_institution_phone', 'note')
-    
-    # マスタ側の department を使って絞り込みを行う
     list_filter = ('date', 'institution__department')
-    
-    # 🛡️ 変更点: 完全な「プルダウン」として表示させるため、検索ボックス化を無効（コメントアウト）にする
-    # autocomplete_fields = ['institution'] 
-    
     date_hierarchy = 'date'
     list_editable = ('note',)
 
-    # 🛡️ 運営側の防衛的視点: Djangoのデフォルト動作を上書きし、プルダウンを「ふりがな順」に強制する
+    # 🛡️ 究極の防衛的視点: DBの仕様に依存せず、Pythonで強制的にふりがな順に並び替える
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "institution":
             from .models import MedicalInstitution
-            # データベースレベルで name_kana の昇順（あいうえお順）で並び替え
-            kwargs["queryset"] = MedicalInstitution.objects.order_by('name_kana', 'name')
+            
+            # 1. まず標準のプルダウン項目（フィールドオブジェクト）を取得
+            formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+            
+            # 2. 病院の全データを取得し、Python側で強制ソート
+            institutions = list(MedicalInstitution.objects.all())
+            
+            # ソートロジック: ふりがなが無いもの（Noneや空欄）は「んんん」として一番下に追いやる
+            institutions.sort(key=lambda x: (x.name_kana or 'んんんんん').strip())
+            
+            # 3. 並び替えた結果をプルダウンの選択肢に直接上書き
+            choices = [('', '---------')] # 初期値（未選択状態）
+            for obj in institutions:
+                # obj（モデルインスタンス）を str() に渡すことで、
+                # [診療科目] 病院名 という結合表示がそのまま維持されます
+                choices.append((obj.id, str(obj)))
+                
+            formfield.choices = choices
+            return formfield
+            
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def get_institution_name(self, obj):
