@@ -136,7 +136,7 @@ class MedicalInstitutionAdmin(admin.ModelAdmin):
     readonly_fields = ('map_canvas',)
     
     # ▼ 新規追加: 作成したアクションを管理画面に登録
-    actions = [export_medical_institutions_csv]
+    actions = ['clean_furigana_spaces', export_medical_institutions_csv]
 
     def map_canvas(self, obj):
         return mark_safe(
@@ -149,6 +149,22 @@ class MedicalInstitutionAdmin(admin.ModelAdmin):
             'js/admin_map.js',
             f'https://maps.googleapis.com/maps/api/js?key={settings.GOOGLE_MAPS_API_KEY}&callback=initMap',
         )
+
+    # 🛡️ 新規追加：ふりがなの先頭や末尾に紛れ込んだ「見えない空白」を自動で消し去るプログラム
+    @admin.action(description='🧹 選択した病院の「ふりがな」の空白を自動削除する')
+    def clean_furigana_spaces(self, request, queryset):
+        import re
+        count = 0
+        for obj in queryset:
+            if obj.name_kana:
+                # 全角スペース・半角スペース・タブなどの見えない文字を完全に除去
+                cleaned_kana = re.sub(r'[\s　]+', '', obj.name_kana)
+                if obj.name_kana != cleaned_kana:
+                    obj.name_kana = cleaned_kana
+                    obj.save()
+                    count += 1
+        self.message_user(request, f"{count}件の医療機関のふりがな（見えない空白）を修正しました！")
+
 
 @admin.register(HolidayDutySchedule)
 class HolidayDutyScheduleAdmin(admin.ModelAdmin):
