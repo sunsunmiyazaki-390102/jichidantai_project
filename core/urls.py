@@ -36,7 +36,8 @@ urlpatterns = [
     path('p/<slug:slug>/', bot_views.public_tenant_page, name='public_tenant_page'),
     # 新規追加：議事録作成サポート画面
     path('minutes-support/', bot_views.minutes_support_page, name='minutes_support_page'),
-    path('survey/<int:survey_id>/', events_views.survey_detail, name='survey_detail'),        
+    path('survey/<int:survey_id>/', events_views.survey_detail, name='survey_detail'),
+    path('accounting/', include('accounting.urls')),        
 ]
 
 # アップロードされたメディアファイル（PDFや画像）を表示するための設定

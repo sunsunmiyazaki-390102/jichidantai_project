@@ -60,6 +60,8 @@ INSTALLED_APPS = [
     'import_export',
     'storages',
     'library',
+    'accounting',
+    'django.contrib.humanize',
 ]
 
 MIDDLEWARE = [

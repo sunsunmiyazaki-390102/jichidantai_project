@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ja">
+{% load humanize %}    
+<head>
+    <meta charset="UTF-8">
+    <title>{{ fiscal_year.name }} 総会資料（{{ fiscal_year.politician.name }}）</title>
+    <style>
+        /* 🛡️ 印刷用（A4）に最適化したシビアなCSS設定 */
+        body { font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; color: #333; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        h1 { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 30px; font-size: 1.8rem;}
+        h2 { border-left: 5px solid #333; padding-left: 10px; margin-top: 40px; font-size: 1.4rem; page-break-after: avoid; }
+        
+        /* テーブルの基本デザイン */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { border: 1px solid #000; padding: 10px; text-align: left; }
+        th { background-color: #f2f2f2; text-align: center; font-weight: bold; }
+        .num-cell { text-align: right; }
+        .total-row { font-weight: bold; background-color: #e9ecef; }
+        
+        /* 印刷時の改ページ制御 */
+        @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .page-break { page-break-before: always; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 🎯 ヘッダー -->
+        <h1>{{ fiscal_year.name }} 定時総会 資料</h1>
+        <p style="text-align: right;">発行日：{% now "Y年n月j日" %}<br>作成：{{ fiscal_year.politician.name }} 役員会</p>
+
+        <!-- 🎯 第1号議案：事業報告 -->
+        <h2>第1号議案：{{ fiscal_year.name }} 事業報告</h2>
+        <p>本年度は、以下の行事および活動を実施いたしました。</p>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 25%;">実施日</th>
+                    <th style="width: 75%;">事業・行事名（内容）</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for event in activities %}
+                <tr>
+                    <td>{{ event.start_time|date:"Y年n月j日" }}</td>
+                    <td><strong>{{ event.title }}</strong><br><span style="font-size: 0.9em; color: #555;">{{ event.description|truncatechars:50 }}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="2" style="text-align: center;">今年度の事業実績はありません。</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- 印刷時にここで改ページさせる設定 -->
+        <div class="page-break"></div>
+
+        <!-- 🎯 第2号議案：収支決算報告 -->
+        <h2>第2号議案：{{ fiscal_year.name }} 収支決算報告</h2>
+        <p>対象期間：{{ fiscal_year.start_date|date:"Y年n月j日" }} 〜 {{ fiscal_year.end_date|date:"Y年n月j日" }}</p>
+        
+        <div style="display: flex; gap: 20px;">
+            <!-- 収入の部 -->
+            <div style="flex: 1;">
+                <table>
+                    <thead>
+                        <tr><th colspan="2">【収入の部】</th></tr>
+                        <tr><th>勘定科目</th><th>金額（円）</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for item in incomes %}
+                        <tr>
+                            <td>{{ item.category__name }}</td>
+                            <td class="num-cell">{{ item.total|default:0|intcomma }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="2" style="text-align: center;">収入データなし</td></tr>
+                        {% endfor %}
+                        <tr class="total-row">
+                            <td style="text-align: center;">収入 合計 (A)</td>
+                            <td class="num-cell">{{ total_income|default:0|intcomma }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 支出の部 -->
+            <div style="flex: 1;">
+                <table>
+                    <thead>
+                        <tr><th colspan="2">【支出の部】</th></tr>
+                        <tr><th>勘定科目</th><th>金額（円）</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for item in expenses %}
+                        <tr>
+                            <td>{{ item.category__name }}</td>
+                            <td class="num-cell">{{ item.total|default:0|intcomma }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="2" style="text-align: center;">支出データなし</td></tr>
+                        {% endfor %}
+                        <tr class="total-row">
+                            <td style="text-align: center;">支出 合計 (B)</td>
+                            <td class="num-cell">{{ total_expense|default:0|intcomma }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 最終残高 -->
+        <table style="margin-top: 20px; border: 2px solid #000;">
+            <tr style="font-size: 1.2rem; font-weight: bold; background-color: #fff3cd;">
+                <td style="text-align: center; width: 60%;">次年度繰越金 (A - B)</td>
+                <td class="num-cell" style="width: 40%;">¥ {{ carry_over_balance|default:0|intcomma }}</td>
+            </tr>
+        </table>
+        <!-- ▼▼▼ ここから第3号議案を追加 ▼▼▼ -->
+        <div class="page-break"></div>
+        
+        <h2>第3号議案：{% if next_year %}{{ next_year.name }}{% else %}次年度{% endif %} 予算案</h2>
+        
+        {% if next_year %}
+        <p>対象期間：{{ next_year.start_date|date:"Y年n月j日" }} 〜 {{ next_year.end_date|date:"Y年n月j日" }}</p>
+        
+        <div style="display: flex; gap: 20px;">
+            <!-- 予算案：収入の部 -->
+            <div style="flex: 1;">
+                <table>
+                    <thead>
+                        <tr><th colspan="2">【収入の部】</th></tr>
+                        <tr><th>勘定科目</th><th>予算額（円）</th></tr>
+                    </thead>
+                    <tbody>
+                        <!-- 🎯 キラー機能：前期繰越金の自動挿入 -->
+                        <tr style="background-color: #e2f0d9;">
+                            <td>前期繰越金（自動算出）</td>
+                            <td class="num-cell">{{ carry_over_balance|default:0|intcomma }}</td>
+                        </tr>
+                        
+                        {% for item in budget_incomes %}
+                        <tr>
+                            <td>{{ item.category.name }}</td>
+                            <td class="num-cell">{{ item.amount|default:0|intcomma }}</td>
+                        </tr>
+                        {% endfor %}
+                        <tr class="total-row">
+                            <td style="text-align: center;">収入予算 合計 (C)</td>
+                            <td class="num-cell">{{ next_total_income|default:0|intcomma }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 予算案：支出の部 -->
+            <div style="flex: 1;">
+                <table>
+                    <thead>
+                        <tr><th colspan="2">【支出の部】</th></tr>
+                        <tr><th>勘定科目</th><th>予算額（円）</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for item in budget_expenses %}
+                        <tr>
+                            <td>{{ item.category.name }}</td>
+                            <td class="num-cell">{{ item.amount|default:0|intcomma }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="2" style="text-align: center;">支出予算データなし</td></tr>
+                        {% endfor %}
+                        <tr class="total-row">
+                            <td style="text-align: center;">支出予算 合計 (D)</td>
+                            <td class="num-cell">{{ next_total_expense|default:0|intcomma }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <table style="margin-top: 20px; border: 2px solid #000;">
+            <tr style="font-size: 1.2rem; font-weight: bold; background-color: #fff3cd;">
+                <td style="text-align: center; width: 60%;">次年度 予備費・残高見込 (C - D)</td>
+                <td class="num-cell" style="width: 40%;">¥ {{ next_total_income|add:"-"|add:next_total_expense|intcomma }}</td>
+            </tr>
+        </table>
+        {% else %}
+        <div style="padding: 30px; border: 2px dashed #ccc; text-align: center; color: #777; margin-top: 20px;">
+            <p>※次年度の会計マスタおよび予算データが未作成です。<br>管理画面から次年度の設定を行うと、ここに予算案が自動生成されます。</p>
+        </div>
+        {% endif %}
+        <!-- ▲▲▲ 第3号議案 追加ここまで ▲▲▲ -->
+
+        <p style="margin-top: 40px; text-align: right;">
+            上記決算について、関係帳簿および証拠書類と照合の結果、相違ないことを認めます。<br><br>
+            令和　　年　　月　　日<br><br>
+            会計監査： ＿＿＿＿＿＿＿＿＿＿＿＿ ㊞
+        </p>
+    </div>
+</body>
+</html>
