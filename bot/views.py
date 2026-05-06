@@ -11,6 +11,7 @@ from openai import OpenAI
 import time
 import re
 import traceback
+import calendar
 
 from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityEmergencyEvent, CityEmergencyResponse, PublicPageConfig, Condolence
 from members.models import AiMember
@@ -21,6 +22,7 @@ from library.models import LibraryDocument
 from django.core.paginator import Paginator
 from events.models import Event, Announcement, Survey, HolidayDutySchedule
 from django.db.models import Q
+from bot.models import GarbageCalendar
 
 @login_required
 def library_list(request):
@@ -612,7 +614,7 @@ def public_tenant_page(request, slug):
 
     config = politician.page_config
 
-    # --- 各種データの取得（表示設定がONの場合のみクエリを発行し、DB負荷を最小化） ---
+    # --- 各種データの取得 ---
     library_docs = []
     announcements = []
     upcoming_events = []
@@ -629,7 +631,7 @@ def public_tenant_page(request, slug):
             politician=politician, is_active=True
         ).order_by('-created_at')[:5]
 
-    # 3. 行事予定（本日以降、かつ公開中のものを近い順に5件）
+    # 3. 行事予定
     if config.show_events:
         upcoming_events = Event.objects.filter(
             politician=politician,
@@ -637,14 +639,12 @@ def public_tenant_page(request, slug):
             start_time__gte=timezone.now()
         ).order_by('start_time')[:5]
 
-    # 4. 回覧板・アンケート（現在受付中のもの全て）
+    # 4. 回覧板・アンケート
     active_surveys = Survey.objects.filter(
         politician=politician, is_active=True
     ).order_by('deadline')
 
-    # ==========================================
-    # ▼▼▼ 休日当番医の取得ロジック（直近2日間自動抽出版） ▼▼▼
-    # ==========================================
+    # 5. 休日当番医
     today = timezone.localtime(timezone.now()).date()
     target_area_ids = config.target_medical_areas.values_list('id', flat=True)
 
@@ -667,23 +667,53 @@ def public_tenant_page(request, slug):
                 'institution__name_kana'
             )
 
-    # ==========================================
-    # ▼▼▼ おくやみ情報の取得ロジック ▼▼▼
-    # ==========================================
+    # 6. おくやみ情報
     target_mun_ids = config.target_condolence_areas.values_list('id', flat=True)
-    
     condolences = []
     if target_mun_ids:
         two_days_ago = timezone.now() - timedelta(days=2)
-
-        # データベースレベルでフィルタリング（超高速処理）
         condolences = Condolence.objects.filter(
             funeral_hall__municipality__id__in=target_mun_ids
         ).filter(
             Q(funeral_datetime__gte=two_days_ago) | Q(funeral_datetime__isnull=True)
         ).select_related('funeral_hall').order_by('-funeral_datetime')
 
-    # コンテキストの作成（辞書の重複キーも修正済み）
+    # ==========================================
+    # ▼▼▼ 7. ゴミ収集データの取得ロジック ▼▼▼
+    # ==========================================
+    # 当月の初日と末日を計算
+    _, last_day = calendar.monthrange(today.year, today.month)
+    first_date_of_month = today.replace(day=1)
+    last_date_of_month = today.replace(day=last_day)
+
+    # 該当自治会の当月分のゴミ収集データを取得
+    monthly_garbages_qs = GarbageCalendar.objects.filter(
+        municipality=politician.gomi_municipality,
+        district=politician.gomi_district,
+        collection_date__gte=first_date_of_month,
+        collection_date__lte=last_date_of_month
+    ).order_by('collection_date')
+
+    # 🛡️ データを日付ごとにグループ化し、複数種類をまとめる
+    grouped_garbages = {}
+    for g in monthly_garbages_qs:
+        if g.collection_date not in grouped_garbages:
+            grouped_garbages[g.collection_date] = []
+        grouped_garbages[g.collection_date].append(g.garbage_type)
+
+    # テンプレートに渡すための整形済みリストを作成
+    calendar_data = []
+    for d, types in grouped_garbages.items():
+        calendar_data.append({
+            'date': d,
+            'types_str': '、'.join(types),           # 例: "金属、缶びん" (カレンダー表用)
+            'types_quoted': '「' + '」「'.join(types) + '」' # 例: "「金属」「缶びん」" (トップサマリー用)
+        })
+
+    # 本日のデータを抽出
+    today_garbage = next((item for item in calendar_data if item['date'] == today), None)
+
+    # 🎯 コンテキスト（テンプレートへ渡すデータ）を修正
     context = {
         'politician': politician,
         'config': config,
@@ -694,7 +724,11 @@ def public_tenant_page(request, slug):
         'duty_clinics': duty_clinics,
         'today': today,
         'condolences': condolences,
+        # ▼ ゴミカレンダー用の変数を修正 ▼
+        'today_garbage': today_garbage,
+        'calendar_data': calendar_data, # 🔴 monthly_garbages から calendar_data に変更
     }
+    
     return render(request, 'bot/tenant_page.html', context)
 
 # 🛡️ 運営側の防衛的視点: 役員（ログインユーザー）しか見られないように制限をかける

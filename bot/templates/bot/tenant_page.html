@@ -142,7 +142,56 @@
                 {% endfor %}
             </div>
         </details>
-        {% endif %}        
+        {% endif %} 
+
+        <!-- 🛡️ ゴミ収集カレンダー表示ブロック -->
+        <details style="margin-bottom: 2rem; border: 2px solid #28a745; border-radius: 8px; overflow: hidden; background-color: #fff;">
+            <!-- 開閉ボタン部分 -->
+            <summary style="background-color: #28a745; color: white; padding: 15px; text-align: center; font-weight: bold; cursor: pointer; list-style: none;">
+                <span style="font-size: 1.1rem;">
+                    {% if today_garbage %}
+                        <!-- 🔴 today_garbage.types_quoted を呼び出す -->
+                        ♻️ 今日（{{ today|date:"n月j日" }}）のゴミ収集は{{ today_garbage.types_quoted }}です。
+                    {% else %}
+                        ✅ 今日（{{ today|date:"n月j日" }}）はゴミ収集はありません。
+                    {% endif %}
+                </span>
+                <br>
+                <span style="font-size: 0.85rem; opacity: 0.9;">（タップで今月のカレンダーを表示）</span>
+            </summary>
+            
+            <!-- 展開部分 -->
+            <div style="padding: 15px; background-color: #f8fff9;">
+                <h4 style="text-align: center; color: #28a745; margin-bottom: 15px; font-weight: bold;">📅 {{ today|date:"Y年n月" }} の収集スケジュール</h4>
+                
+                <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 0.95rem;">
+                    <thead>
+                        <tr style="background-color: #e9ecef; border-bottom: 2px solid #dee2e6;">
+                            <th style="padding: 10px; border: 1px solid #dee2e6;">日付</th>
+                            <th style="padding: 10px; border: 1px solid #dee2e6;">収集ごみ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- 🔴 calendar_data をループで回す -->
+                        {% for item in calendar_data %}
+                        <tr style="border-bottom: 1px solid #eee; {% if item.date == today %}background-color: #d4edda; font-weight: bold; border: 2px solid #28a745;{% endif %}">
+                            <td style="padding: 10px; border: 1px solid #dee2e6;">
+                                {{ item.date|date:"n/j(D)" }}
+                            </td>
+                            <td style="padding: 10px; border: 1px solid #dee2e6;">
+                                <!-- 🔴 item.types_str でまとめて表示 -->
+                                {{ item.types_str }}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="2" style="padding: 15px; color: #777;">今月の収集予定は登録されていません。</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </details>        
 
         {% if active_surveys %}
         <div class="card" style="border: 2px solid #3498db;">
