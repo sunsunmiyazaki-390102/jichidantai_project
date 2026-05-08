@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     'library',
     'accounting',
     'django.contrib.humanize',
+    'reservations',
 ]
 
 MIDDLEWARE = [

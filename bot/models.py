@@ -55,7 +55,13 @@ class Politician(models.Model):
     
     class Meta:
         verbose_name = "自治会"
-        verbose_name_plural = "自治会一覧"    
+        verbose_name_plural = "自治会一覧" 
+
+    # ▼ 今回追記する「通知受信用LINE ID」
+    notification_line_id = models.CharField(
+        "通知受信用LINE ID", max_length=255, blank=True, null=True, 
+        help_text="予約申請などの通知を受け取る役員のLINE User ID（U...）またはグループID（C...）"
+    )           
 
 class Course(models.Model):
     # politicianとの直接の紐付け（ForeignKey）を削除

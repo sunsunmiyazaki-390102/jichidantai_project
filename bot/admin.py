@@ -63,7 +63,7 @@ class PoliticianAdmin(admin.ModelAdmin):
         ('基本情報・システム権限', {
             'fields': ('name', 'slug', 'city_code', 'district_code', 'admin_users') # ← admin_users を追加
         }),
-        ('LINE連携設定', {'fields': ('line_channel_secret', 'line_access_token')}),
+        ('LINE連携設定', {'fields': ('line_channel_secret', 'line_access_token', 'notification_line_id')}),
         ('地域設定', {'fields': ('gomi_municipality', 'gomi_district')}),
         ('AI（頭脳）設定', {
             'fields': ('openai_api_key', 'ai_model_name', 'system_prompt', 'openai_assistant_id'),

@@ -193,6 +193,11 @@
             </div>
         </details>        
 
+        <a href="{% url 'reservations:calendar' politician.slug %}" 
+           style="display: block; background-color: #17a2b8; color: white; text-align: center; padding: 15px; margin-bottom: 2rem; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 1.1rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            📅 施設予約カレンダー（空き状況の確認）
+        </a>
+
         {% if active_surveys %}
         <div class="card" style="border: 2px solid #3498db;">
             <h3 class="card-title">📝 回覧板・アンケート（ご回答のお願い）</h3>
