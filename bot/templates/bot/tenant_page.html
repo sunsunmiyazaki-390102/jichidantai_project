@@ -217,37 +217,49 @@
         {% endif %}
 
         {% if config.show_announcements %}
-        <div class="card">
-            <h3 class="card-title">📢 最新のお知らせ</h3>
-            <ul class="doc-list">
-                {% for info in announcements %}
-                <li>
-                    <span style="font-size: 0.8rem; color: #666;">{{ info.created_at|date:"Y/m/d" }}</span><br>
-                    <strong>{{ info.title }}</strong>
-                </li>
-                {% empty %}
-                <li>現在、新しいお知らせはありません。</li>
-                {% endfor %}
-            </ul>
+
+        <div style="background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dee2e6;">
+            <h3 style="color: #e83e8c; font-size: 1.1rem; border-bottom: 2px solid #f8d7da; padding-bottom: 5px; margin-top: 0;">📢 最新のお知らせ</h3>
+            
+            {% for ann in announcements %}
+                <details style="margin-top: 10px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+                    <summary style="cursor: pointer; font-weight: bold; color: #333; outline: none; list-style: none;">
+                        <span style="font-size: 0.85rem; color: #666;">{{ ann.created_at|date:"Y/m/d" }}</span><br>
+                        ▶ {{ ann.title }}
+                    </summary>
+                    <div style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px; font-size: 0.95rem; color: #444;">
+                        {{ ann.content|linebreaksbr }}
+                    </div>
+                </details>
+            {% empty %}
+                <p style="color: #666; font-size: 0.9rem;">現在、お知らせはありません。</p>
+            {% endfor %}
         </div>
+
         {% endif %}
 
         {% if config.show_events %}
-        <div class="card">
-            <h3 class="card-title">📅 今後の行事予定</h3>
-            <ul class="doc-list">
-                {% for event in upcoming_events %}
-                <li>
-                    <span style="font-size: 0.8rem; color: #d9534f; font-weight: bold;">
-                        {{ event.start_time|date:"n月j日(D)" }}
-                    </span><br>
-                    <strong>{{ event.title }}</strong>
+
+        <div style="background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dee2e6;">
+            <h3 style="color: #17a2b8; font-size: 1.1rem; border-bottom: 2px solid #d1ecf1; padding-bottom: 5px; margin-top: 0;">📅 今後の行事予定</h3>
+            
+            <ul style="list-style: none; padding: 0; margin: 0;">
+            {% for event in upcoming_events %}
+                <li style="margin-top: 10px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+                    <span style="font-weight: bold; color: #d32f2f;">{{ event.date|date:"n/j (D) H:i" }}</span><br>
+                    <span style="font-weight: bold; color: #333;">{{ event.title }}</span>
+                    {% if event.description %}
+                        <p style="font-size: 0.9rem; color: #555; margin-top: 5px; margin-bottom: 0;">
+                            {{ event.description|linebreaksbr }}
+                        </p>
+                    {% endif %}
                 </li>
-                {% empty %}
-                <li>現在、予定されている行事はありません。</li>
-                {% endfor %}
+            {% empty %}
+                <p style="color: #666; font-size: 0.9rem;">現在、予定されている行事はありません。</p>
+            {% endfor %}
             </ul>
         </div>
+
         {% endif %}
 
         {% if config.show_library %}

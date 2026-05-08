@@ -1,28 +1,50 @@
-from django.http import HttpResponse, HttpResponseBadRequest, Http404
-from django.views.decorators.csrf import csrf_exempt
-from django.shortcuts import get_object_or_404
-from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage, FlexSendMessage, FollowEvent, PostbackEvent, TemplateSendMessage, CarouselTemplate, CarouselColumn, PostbackAction
-from django.utils import timezone
+# ==========================================
+# 1. Python標準ライブラリ
+# ==========================================
+import calendar
+import re
+import time
+import traceback
 from datetime import timedelta
 from urllib.parse import parse_qsl
+
+# ==========================================
+# 2. サードパーティ・ライブラリ (LINE, OpenAI)
+# ==========================================
 from openai import OpenAI
-import time
-import re
-import traceback
-import calendar
+from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import (
+    MessageEvent, TextMessage, TextSendMessage, FlexSendMessage, 
+    FollowEvent, PostbackEvent, TemplateSendMessage, CarouselTemplate, 
+    CarouselColumn, PostbackAction
+)
 
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityEmergencyEvent, CityEmergencyResponse, PublicPageConfig, Condolence
-from members.models import AiMember
-
-from django.shortcuts import render
+# ==========================================
+# 3. Django コア機能
+# ==========================================
 from django.contrib.auth.decorators import login_required
-from library.models import LibraryDocument
 from django.core.paginator import Paginator
-from events.models import Event, Announcement, Survey, HolidayDutySchedule
 from django.db.models import Q
-from bot.models import GarbageCalendar
+from django.http import HttpResponse, HttpResponseBadRequest, Http404
+from django.shortcuts import render, get_object_or_404
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+
+# ==========================================
+# 4. 自作アプリのモデル群（🚨 名前空間の衝突を修正済）
+# ==========================================
+from members.models import AiMember
+from library.models import LibraryDocument
+
+# 🛡️ 修正箇所: ここにあった Event を削除し、bot側の Event が生きるようにしました
+from events.models import Announcement, Survey, HolidayDutySchedule 
+
+from bot.models import (
+    Politician, Event, Course, CourseContent, UserProgress, 
+    CourseAssignment, GarbageCalendar, EmergencyEvent, EmergencyResponse, 
+    CityEmergencyEvent, CityEmergencyResponse, PublicPageConfig, Condolence
+)
 
 @login_required
 def library_list(request):
@@ -633,11 +655,11 @@ def public_tenant_page(request, slug):
 
     # 3. 行事予定
     if config.show_events:
+        now = timezone.now()
         upcoming_events = Event.objects.filter(
             politician=politician,
-            is_active=True,
-            start_time__gte=timezone.now()
-        ).order_by('start_time')[:5]
+            date__gte=now
+        ).order_by('date')[:5]
 
     # 4. 回覧板・アンケート
     active_surveys = Survey.objects.filter(
