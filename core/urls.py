@@ -15,16 +15,24 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
 from django.urls import path, include
-from django.http import HttpResponse # ★追加1：画面に文字を出す部品
+from django.http import HttpResponse
+from django.shortcuts import redirect  # 🔴 追加：リダイレクト（転送）用の部品
 from django.conf import settings
 from django.conf.urls.static import static
 from bot import views as bot_views
 from events import views as events_views
 
-# ★追加2：簡単な表示機能を作る
+# ★追加2：簡単な表示機能を作る（LIFFルーター兼用にアップデート）
 def index(request):
+    # 🛡️ 防衛的視点：LIFFからの動的ルーティングパラメータをキャッチ
+    liff_state = request.GET.get('liff.state')
+    
+    # liff.state が存在し、かつ安全な内部パス（/から始まる）場合のみ転送
+    if liff_state and liff_state.startswith('/'):
+        return redirect(liff_state)
+        
+    # LIFF経由ではない、通常のルートアクセスの場合はトップページを表示
     return HttpResponse("<h1>Hello Django!</h1><p>自治会のローカル環境は正常です。</p>")
 
 urlpatterns = [
@@ -44,3 +52,4 @@ urlpatterns = [
 # アップロードされたメディアファイル（PDFや画像）を表示するための設定
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    

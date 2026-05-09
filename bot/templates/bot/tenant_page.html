@@ -44,7 +44,6 @@
         </div>
 
         {% if duty_clinics %}
-        <!-- 🛡️ 第1階層：大見出し（おくやみ情報と統一したデザイン） -->
         <details style="margin-bottom: 2rem; border: 2px solid #dc3545; border-radius: 8px; overflow: hidden; background-color: #fff;">
             <summary style="background-color: #dc3545; color: white; padding: 15px; text-align: center; font-weight: bold; cursor: pointer;">
                 🚨 休日・夜間 在宅当番医を確認する（タップで開閉）
@@ -53,17 +52,14 @@
             <div style="padding: 15px; background-color: #fff9fa;">
                 <p style="color: #dc3545; font-size: 0.85rem; font-weight: bold; text-align: center; margin-bottom: 15px;">※受診前に必ず電話で開院状況を確認してください。</p>
 
-                <!-- 🛡️ 日付ごとにデータをグループ化 -->
                 {% regroup duty_clinics by date as date_list %}
                 {% for date_group in date_list %}
                 
-                <!-- 🛡️ 第2階層：日付（タップで開閉） -->
                 <details style="margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; background-color: #fff;">
                     <summary style="padding: 12px; font-weight: bold; cursor: pointer; border-bottom: 1px solid #eee; background-color: #fdfdfd;">
                         📅 {{ date_group.grouper|date:"n月j日(D)" }} の当番医
                     </summary>
                     
-                    <!-- 🛡️ 第3階層：該当日の病院リスト -->
                     <div style="padding: 15px;">
                         {% for clinic in date_group.list %}
                         <div style="margin-bottom: {% if not forloop.last %}15px{% else %}0{% endif %}; padding-bottom: {% if not forloop.last %}15px{% else %}0{% endif %}; border-bottom: {% if not forloop.last %}1px dashed #ccc{% else %}none{% endif %};">
@@ -94,7 +90,6 @@
         {% endif %}
 
         {% if condolences %}
-        <!-- 🛡️ 第1階層：大見出し「おくやみ」 -->
         <details style="margin-bottom: 2rem; border: 2px solid #333; border-radius: 8px; overflow: hidden; background-color: #fff;">
             <summary style="background-color: #333; color: white; padding: 15px; text-align: center; font-weight: bold; cursor: pointer;">
                 ⬛ おくやみ情報（タップで開閉）
@@ -103,7 +98,6 @@
             <div style="padding: 15px; background-color: #f8f9fa;">
                 {% for item in condolences %}
                 
-                <!-- 🛡️ 第2階層：故人情報 -->
                 <details style="margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; background-color: #fff;">
                     <summary style="padding: 12px; font-weight: bold; cursor: pointer; border-bottom: 1px solid #eee;">
                         故人：{{ item.deceased_name }} 様 {% if item.age %}({{ item.age }}歳){% endif %}
@@ -112,7 +106,6 @@
                         </span>
                     </summary>
                     
-                    <!-- 🛡️ 第3階層：葬儀情報・葬祭場情報 -->
                     <div style="padding: 15px; font-size: 0.95rem; line-height: 1.6;">
                         <h5 style="margin: 0 0 10px 0; border-left: 4px solid #333; padding-left: 8px;">葬儀情報（{{ item.ceremony_type }}）</h5>
                         <p style="margin-bottom: 15px;">
@@ -144,13 +137,10 @@
         </details>
         {% endif %} 
 
-        <!-- 🛡️ ゴミ収集カレンダー表示ブロック -->
         <details style="margin-bottom: 2rem; border: 2px solid #28a745; border-radius: 8px; overflow: hidden; background-color: #fff;">
-            <!-- 開閉ボタン部分 -->
             <summary style="background-color: #28a745; color: white; padding: 15px; text-align: center; font-weight: bold; cursor: pointer; list-style: none;">
                 <span style="font-size: 1.1rem;">
                     {% if today_garbage %}
-                        <!-- 🔴 today_garbage.types_quoted を呼び出す -->
                         ♻️ 今日（{{ today|date:"n月j日" }}）のゴミ収集は{{ today_garbage.types_quoted }}です。
                     {% else %}
                         ✅ 今日（{{ today|date:"n月j日" }}）はゴミ収集はありません。
@@ -160,7 +150,6 @@
                 <span style="font-size: 0.85rem; opacity: 0.9;">（タップで今月のカレンダーを表示）</span>
             </summary>
             
-            <!-- 展開部分 -->
             <div style="padding: 15px; background-color: #f8fff9;">
                 <h4 style="text-align: center; color: #28a745; margin-bottom: 15px; font-weight: bold;">📅 {{ today|date:"Y年n月" }} の収集スケジュール</h4>
                 
@@ -172,14 +161,12 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <!-- 🔴 calendar_data をループで回す -->
                         {% for item in calendar_data %}
                         <tr style="border-bottom: 1px solid #eee; {% if item.date == today %}background-color: #d4edda; font-weight: bold; border: 2px solid #28a745;{% endif %}">
                             <td style="padding: 10px; border: 1px solid #dee2e6;">
                                 {{ item.date|date:"n/j(D)" }}
                             </td>
                             <td style="padding: 10px; border: 1px solid #dee2e6;">
-                                <!-- 🔴 item.types_str でまとめて表示 -->
                                 {{ item.types_str }}
                             </td>
                         </tr>
@@ -193,7 +180,7 @@
             </div>
         </details>        
 
-        <a href="{% url 'reservations:calendar' politician.slug %}" 
+        <a href="https://liff.line.me/2010022699-1NyjK3qU/reservations/{{ politician.slug }}/" 
            style="display: block; background-color: #17a2b8; color: white; text-align: center; padding: 15px; margin-bottom: 2rem; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 1.1rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             📅 施設予約カレンダー（空き状況の確認）
         </a>
@@ -217,7 +204,6 @@
         {% endif %}
 
         {% if config.show_announcements %}
-
         <div style="background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dee2e6;">
             <h3 style="color: #e83e8c; font-size: 1.1rem; border-bottom: 2px solid #f8d7da; padding-bottom: 5px; margin-top: 0;">📢 最新のお知らせ</h3>
             
@@ -235,11 +221,9 @@
                 <p style="color: #666; font-size: 0.9rem;">現在、お知らせはありません。</p>
             {% endfor %}
         </div>
-
         {% endif %}
 
         {% if config.show_events %}
-
         <div style="background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dee2e6;">
             <h3 style="color: #17a2b8; font-size: 1.1rem; border-bottom: 2px solid #d1ecf1; padding-bottom: 5px; margin-top: 0;">📅 今後の行事予定</h3>
             
@@ -259,7 +243,6 @@
             {% endfor %}
             </ul>
         </div>
-
         {% endif %}
 
         {% if config.show_library %}
