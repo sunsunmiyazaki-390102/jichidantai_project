@@ -29,7 +29,7 @@ def send_line_notification(access_token, to_id, message_text):
         print(f"LINE通知エラー: {e}")
 
 # ==========================================
-# 1. 申請受付ビュー（LINE通知機能付き）
+# 1. 申請受付ビュー（LIFF ID取得・LINE通知機能付き）
 # ==========================================
 def calendar_view(request, slug):
     """住民向けカレンダー表示と申請受付"""
@@ -39,11 +39,18 @@ def calendar_view(request, slug):
     if request.method == 'POST':
         form = ReservationForm(request.POST)
         if form.is_valid():
+            # 🛡️ commit=False で一旦保存を止め、フォーム外のデータをセットする
             reservation = form.save(commit=False)
+            
+            # 🔴 重要：HTMLのLIFF SDKが取得したLINE IDを保存する
+            line_id = request.POST.get('applicant_line_id')
+            if line_id:
+                reservation.applicant_line_id = line_id
+            
             reservation.status = 'PENDING'
             reservation.save()
             
-            # 🎯 役員へのLINE通知処理（アクセストークンと宛先IDが設定されている場合のみ実行）
+            # 🎯 役員へのLINE通知処理
             if politician.line_access_token and getattr(politician, 'notification_line_id', None):
                 msg = (
                     f"🔔 【新規の施設予約申請】\n\n"
@@ -73,7 +80,7 @@ def calendar_view(request, slug):
 
 
 # ==========================================
-# 2. カレンダーデータ送信用API（前回消去してしまった処理）
+# 2. カレンダーデータ送信用API
 # ==========================================
 def events_api(request, slug):
     """カレンダーライブラリ（FullCalendar）に予約データを渡すためのJSON API"""
@@ -87,7 +94,7 @@ def events_api(request, slug):
         
     events = []
     for res in reservations:
-        # 🛡️ 運営側の防衛的視点: 連絡先電話番号など、公開すべきでない個人情報はJSONに絶対に含めない
+        # 🛡️ 運営側の防衛的視点: 個人情報はJSONに含めず、タイトルに最小限の情報のみ表示
         color = '#28a745' if res.status == 'APPROVED' else '#ffc107'
         title = f"[{res.facility.name}] {res.user_name}"
         if res.status == 'PENDING':

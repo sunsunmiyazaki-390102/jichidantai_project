@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>施設予約状況 | {{ politician.name }}</title>
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <style>
         body { font-family: "Noto Sans JP", sans-serif; background-color: #f0f2f5; margin: 0; padding: 10px; }
         .container { max-width: 900px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
@@ -12,19 +13,19 @@
         .back-btn { display: inline-block; margin-bottom: 24px; color: #fff; background-color: #4a5568; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 0.9rem; transition: background 0.3s; }
         .back-btn:hover { background-color: #2d3748; }
         
-        /* 凡例のスタイル */
         .legend { display: flex; justify-content: center; gap: 20px; margin-bottom: 20px; font-size: 0.9rem; flex-wrap: wrap; }
         .legend-item { display: flex; align-items: center; }
         .legend-item span { display: inline-block; width: 16px; height: 16px; border-radius: 4px; margin-right: 8px; }
         
-        /* カレンダーの高さ調整 */
         #calendar { margin-bottom: 40px; background: #fff; }
 
-        /* フォームのスタイル */
         .form-section { background: #f8fafc; padding: 30px; border-radius: 10px; border: 1px solid #e2e8f0; }
         .form-section h2 { font-size: 1.25rem; color: #2d3748; border-left: 6px solid #3182ce; padding-left: 15px; margin-top: 0; margin-bottom: 25px; }
         
-        /* Djangoフォーム要素の共通スタイル（幅を揃える） */
+        /* 🛡️ 外部ブラウザ用の案内メッセージスタイル */
+        .line-notice { background: #fff5f5; border: 1px solid #feb2b2; padding: 20px; border-radius: 8px; text-align: center; color: #c53030; font-weight: bold; }
+        .line-notice p { margin: 5px 0; }
+
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .form-group { display: flex; flex-direction: column; }
         .form-group.full-width { grid-column: span 2; }
@@ -32,7 +33,6 @@
         .form-group input, .form-group select, .form-group textarea { 
             padding: 12px; border: 1px solid #cbd5e0; border-radius: 6px; font-size: 1rem; width: 100%; box-sizing: border-box;
         }
-        .form-group input:focus { border-color: #3182ce; outline: none; box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1); }
         
         .submit-btn { 
             margin-top: 30px; width: 100%; background: #38a169; color: white; border: none; padding: 16px; border-radius: 8px; 
@@ -40,12 +40,10 @@
         }
         .submit-btn:hover { background: #2f855a; }
 
-        /* メッセージ表示 */
         .alert { padding: 15px; margin-bottom: 25px; border-radius: 6px; font-weight: bold; }
         .alert-success { color: #22543d; background-color: #c6f6d5; border: 1px solid #9ae6b4; }
         .alert-error { color: #822727; background-color: #fed7d7; border: 1px solid #feb2b2; }
 
-        /* スマホ向け調整 */
         @media (max-width: 600px) {
             .form-grid { grid-template-columns: 1fr; }
             .form-group.full-width { grid-column: span 1; }
@@ -76,10 +74,18 @@
 
         <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 40px 0;">
 
-        <div id="reservation-form" class="form-section">
+        <div id="line-only-notice" class="line-notice">
+            <p>📢 施設予約申請をご希望の方へ</p>
+            <p style="font-size: 0.9rem;">申請は自治会公式LINEのメニューからのみ受け付けております。<br>現在のブラウザからは空き状況の確認のみ可能です。</p>
+        </div>
+
+        <div id="reservation-form" class="form-section" style="display: none;">
             <h2>📅 新規予約の申請</h2>
-            <form method="post">
+            <form method="post" id="liff-res-form">
                 {% csrf_token %}
+                
+                <input type="hidden" name="applicant_line_id" id="hidden_line_id" value="">
+
                 <div class="form-grid">
                     <div class="form-group full-width">
                         <label>貸出施設</label>
@@ -111,8 +117,30 @@
                 <button type="submit" class="submit-btn">この内容で予約申請を送信する</button>
             </form>
         </div>
-    </div> <script>
+    </div>
+
+    <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // --- LIFF初期化 & 表示切り替え ---
+            liff.init({ liffId: "2010022699-1NyjK3qU" })
+                .then(() => {
+                    // LINE内ブラウザ、または外部ブラウザでLINEログイン済みかチェック
+                    if (liff.isInClient() || liff.isLoggedIn()) {
+                        // 🟢 条件に合致する場合：案内を隠し、フォームを表示
+                        document.getElementById('line-only-notice').style.display = 'none';
+                        document.getElementById('reservation-form').style.display = 'block';
+
+                        // LINEプロフィールからUserID（UID）を取得しセット
+                        liff.getProfile().then(profile => {
+                            document.getElementById('hidden_line_id').value = profile.userId;
+                        });
+                    }
+                })
+                .catch((err) => {
+                    console.error('LIFFの初期化に失敗しました:', err);
+                });
+
+            // --- FullCalendar設定 ---
             var calendarEl = document.getElementById('calendar');
             var calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: window.innerWidth < 768 ? 'listWeek' : 'dayGridMonth',
@@ -125,19 +153,20 @@
                 buttonText: { today: '今日', month: '月', week: '週', list: 'リスト' },
                 events: "{% url 'reservations:events_api' politician.slug %}",
                 
-                // 構文エラーを修正した箇所
                 eventClick: function(info) {
                     alert('【予約詳細】\n' + info.event.title + '\n時間: ' + info.event.start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ' 〜 ' + info.event.end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
                 }, 
                 
                 selectable: true,
                 dateClick: function(info) {
-                    // カレンダータップ時に日付を自動セット
-                    var dateInput = document.querySelector('input[name="date"]');
-                    if(dateInput) {
-                        dateInput.value = info.dateStr;
-                        // フォームへスクロール
-                        document.getElementById('reservation-form').scrollIntoView({ behavior: 'smooth' });
+                    // フォームが表示されている場合のみ、日付を自動セットしてスクロール
+                    var formSection = document.getElementById('reservation-form');
+                    if (formSection.style.display !== 'none') {
+                        var dateInput = document.querySelector('input[name="date"]');
+                        if(dateInput) {
+                            dateInput.value = info.dateStr;
+                            formSection.scrollIntoView({ behavior: 'smooth' });
+                        }
                     }
                 }
             });
