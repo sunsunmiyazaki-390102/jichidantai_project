@@ -35,6 +35,7 @@ class Reservation(models.Model):
     purpose = models.CharField("利用目的", max_length=200)
     status = models.CharField("予約状況", max_length=20, choices=STATUS_CHOICES, default='PENDING')
     created_at = models.DateTimeField(auto_now_add=True)
+    applicant_line_id = models.CharField('申請者のLINE User ID', max_length=255, blank=True, null=True)
 
     class Meta:
         verbose_name = "2. 予約一覧"
