@@ -44,11 +44,40 @@
         .alert-success { color: #22543d; background-color: #c6f6d5; border: 1px solid #9ae6b4; }
         .alert-error { color: #822727; background-color: #fed7d7; border: 1px solid #feb2b2; }
 
+
+        /* 🛡️ スマホ向けFullCalendar調整（レイアウト崩れ防止と防衛的UI） */
         @media (max-width: 600px) {
-            .form-grid { grid-template-columns: 1fr; }
-            .form-group.full-width { grid-column: span 1; }
-            .container { padding: 15px; }
+            /* 1. タイトルがボタンに被るのを防ぐため、ツールバーを縦並びに配置 */
+            .fc .fc-toolbar {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .fc .fc-toolbar-title {
+                font-size: 1.2rem !important;
+            }
+            
+            /* 2. 月表示のマス目崩れを防ぐ防衛的措置（文字縮小とはみ出しの強制カット） */
+            .fc {
+                font-size: 0.8rem;
+            }
+            .fc .fc-col-header-cell-cushion {
+                font-size: 0.75rem;
+                padding: 2px !important;
+            }
+            /* 🔴 追加：月表示のイベントタイトルがマス目を破壊するのを防ぐ */
+            .fc-event-title {
+                font-size: 0.65rem !important; /* スマホのマス目に収まる限界サイズ */
+                white-space: nowrap !important; /* 改行を絶対に許容しない */
+                overflow: hidden !important;    /* 枠から出た文字は隠す */
+                text-overflow: ellipsis;        /* はみ出し部分は「...」に変換 */
+            }
+
+            /* 3. 【修正】スマホでは「週」ボタンのみを物理的に隠す */
+            .fc-timeGridWeek-button {
+                display: none !important;
+            }
         }
+
     </style>
 </head>
 <body>
