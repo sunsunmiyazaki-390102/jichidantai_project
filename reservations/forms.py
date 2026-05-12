@@ -1,5 +1,5 @@
 from django import forms
-from .models import Reservation
+from .models import Reservation, Facility
 from django.core.exceptions import ValidationError
 
 class ReservationForm(forms.ModelForm):
@@ -12,6 +12,20 @@ class ReservationForm(forms.ModelForm):
             'end_time': forms.TimeInput(attrs={'type': 'time'}),
             'purpose': forms.Textarea(attrs={'rows': 2, 'placeholder': '例：子ども会役員会'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        # 🛡️ 運営側の防衛的視点: ビューから渡された現在のテナント（自治会）情報を抽出
+        # kwargsから 'politician' を取り出し、親クラスの初期化前に除外する
+        politician = kwargs.pop('politician', None)
+        
+        super().__init__(*args, **kwargs)
+        
+        # 抽出したテナント情報を使って、施設の選択肢（queryset）を物理的に制限する
+        if politician:
+            self.fields['facility'].queryset = Facility.objects.filter(
+                politician=politician, 
+                is_active=True
+            )
 
     def clean(self):
         cleaned_data = super().clean()

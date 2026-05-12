@@ -37,7 +37,7 @@ def calendar_view(request, slug):
     facilities = Facility.objects.filter(politician=politician, is_active=True)
     
     if request.method == 'POST':
-        form = ReservationForm(request.POST)
+        form = ReservationForm(request.POST, politician=politician)
         if form.is_valid():
             # 🛡️ commit=False で一旦保存を止め、フォーム外のデータをセットする
             reservation = form.save(commit=False)
@@ -69,7 +69,7 @@ def calendar_view(request, slug):
         else:
             messages.error(request, '入力内容に誤りがあるか、時間が重複しています。')
     else:
-        form = ReservationForm()
+        form = ReservationForm(politician=politician)
 
     context = {
         'politician': politician,
