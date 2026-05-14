@@ -11,6 +11,7 @@ from urllib.parse import parse_qsl
 # ==========================================
 # 2. サードパーティ・ライブラリ (LINE, OpenAI)
 # ==========================================
+import openai  # 🔴 追加：RateLimitErrorをキャッチするために全体をインポート
 from openai import OpenAI
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
@@ -32,18 +33,18 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 # ==========================================
-# 4. 自作アプリのモデル群（🚨 名前空間の衝突を修正済）
+# 4. 自作アプリのモデル群
 # ==========================================
 from members.models import AiMember
 from library.models import LibraryDocument
 
-# 🛡️ 修正箇所: ここにあった Event を削除し、bot側の Event が生きるようにしました
 from events.models import Announcement, Survey, HolidayDutySchedule 
 
 from bot.models import (
     Politician, Event, Course, CourseContent, UserProgress, 
     CourseAssignment, GarbageCalendar, EmergencyEvent, EmergencyResponse, 
-    CityEmergencyEvent, CityEmergencyResponse, PublicPageConfig, Condolence
+    CityEmergencyEvent, CityEmergencyResponse, PublicPageConfig, Condolence,
+    TenantLLMQuota  # 🔴 追加：AI利用枠モデル
 )
 
 @login_required
@@ -51,18 +52,13 @@ def library_list(request):
     """
     住民が所属する自治会の資料のみを表示するセキュアなビュー
     """
-    # 運営側の防衛的視点: ログインユーザーの所属情報を基準にフィルタリングを強制
-    # ※Userモデルに紐付くMemberモデルがあると仮定
     user_member = request.user.member 
     
-    # 論理削除されていない、かつ権限が「全住民公開」のもののみを取得
-    # 年度降順・登録日降順でソート
     documents = LibraryDocument.active_objects.filter(
         politician=user_member.politician,
         access_level='PUBLIC'
     ).order_by('-fiscal_year', '-created_at')
 
-    # 大量データ対策: 1ページ20件のページネーション
     paginator = Paginator(documents, 20)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
@@ -70,8 +66,6 @@ def library_list(request):
     return render(request, 'library/document_list.html', {
         'page_obj': page_obj,
     })
-
-# 💡【削除】ここに書いてあった REGION_MAP は不要になったため完全に削除しました！
 
 @csrf_exempt
 def callback(request, politician_slug):
@@ -82,20 +76,17 @@ def callback(request, politician_slug):
     signature = request.META.get('HTTP_X_LINE_SIGNATURE', '')
     body = request.body.decode('utf-8')
 
-    # ゴミの種類に応じて色を自動判定する関数
     def get_garbage_color(garbage_type):
-        if "可燃" in garbage_type or "燃える" in garbage_type: return "#FF3B30" # 赤
-        if "プラ" in garbage_type: return "#007AFF" # 青
-        if "資源" in garbage_type or "ペット" in garbage_type or "ダンボール" in garbage_type: return "#34C759" # 緑
-        if "不燃" in garbage_type or "燃えない" in garbage_type or "金属" in garbage_type: return "#FF9500" # オレンジ
-        return "#8E8E93" # グレー（その他）
+        if "可燃" in garbage_type or "燃える" in garbage_type: return "#FF3B30"
+        if "プラ" in garbage_type: return "#007AFF"
+        if "資源" in garbage_type or "ペット" in garbage_type or "ダンボール" in garbage_type: return "#34C759"
+        if "不燃" in garbage_type or "燃えない" in garbage_type or "金属" in garbage_type: return "#FF9500"
+        return "#8E8E93"
 
-    # 💡【AI用】裏でAIに渡すためのテキストカレンダー
     def get_db_schedule_text():
         now_jst = timezone.localtime(timezone.now())
         today = now_jst.date()
         
-        # ★【変更】データベース（Politician）から直接「市町村」と「地区」を取り出す！
         muni_name = politician.gomi_municipality
         dist_name = politician.gomi_district
         
@@ -118,12 +109,10 @@ def callback(request, politician_slug):
             return muni_name, dist_name, "\n".join(lines)
         return muni_name, dist_name, "※直近30日の収集予定は登録されていません。"
 
-    # 💡【人間用】LINE画面に表示する美しいビジュアルカレンダー
     def get_flex_schedule():
         now_jst = timezone.localtime(timezone.now())
         today = now_jst.date()
         
-        # ★【変更】データベース（Politician）から直接取り出す！
         muni_name = politician.gomi_municipality
         dist_name = politician.gomi_district
         
@@ -138,7 +127,6 @@ def callback(request, politician_slug):
         if not schedules.exists():
             return TextSendMessage(text=f"【{muni_name} {dist_name}】\n直近30日の収集予定は登録されていません。")
 
-        # 日付を「文字列（YYYY-MM-DD）」に変換して確実にグループ化する
         grouped_schedules = {}
         for s in schedules:
             date_key = s.collection_date.strftime('%Y-%m-%d')
@@ -149,27 +137,22 @@ def callback(request, politician_slug):
         weekdays = ["月", "火", "水", "木", "金", "土", "日"]
         contents = []
         
-        # まとめられた日付ごとにループを回す
         for date_key, items in grouped_schedules.items():
             date_obj = items[0].collection_date
             w = weekdays[date_obj.weekday()]
             date_str = f"{date_obj.month}/{date_obj.day}({w})"
             
-            # ゴミの種類を横並びにするためのテキスト（span）のリストを作成
             spans = []
             for i, item in enumerate(items):
                 color = get_garbage_color(item.garbage_type)
                 spans.append({"type": "span", "text": item.garbage_type, "color": color, "weight": "bold"})
                 
-                # 注意書きがあれば小さく追加
                 if item.notes:
                     spans.append({"type": "span", "text": f"({item.notes})", "color": "#888888", "size": "xs"})
                 
-                # 最後のアイテムでなければ区切り文字（ / ）を入れる
                 if i < len(items) - 1:
                     spans.append({"type": "span", "text": " / ", "color": "#CCCCCC"})
             
-            # 1日分の行を作成
             row = {
                 "type": "box",
                 "layout": "horizontal",
@@ -183,7 +166,6 @@ def callback(request, politician_slug):
             contents.append(row)
             contents.append({"type": "separator", "margin": "md"})
 
-        # ビジュアルパネルの大枠を組み立てる
         bubble = {
             "type": "bubble",
             "size": "mega",
@@ -201,8 +183,17 @@ def callback(request, politician_slug):
         }
         return FlexSendMessage(alt_text="ゴミ出しカレンダー", contents=bubble)
 
+    # ==========================================
+    # ▼▼▼ 修正：防衛的ロジックを追加したAI応答 ▼▼▼
+    # ==========================================
     def get_ai_response(user_text):
         if not politician.openai_api_key: return "AI設定未完了"
+
+        # 🛡️ 運営側の防衛的視点: システム（DB）で設定した月間利用枠を超過していないかチェック
+        if hasattr(politician, 'llm_quota'):
+            if not politician.llm_quota.can_use_ai():
+                return "【システム通知】当月のAI自動応答システムのご利用上限に達しました。来月1日にリセットされます。お急ぎの用件は、恐れ入りますが役員へ直接ご連絡をお願いいたします。"
+
         client = OpenAI(api_key=politician.openai_api_key.strip())
         
         now_jst = timezone.localtime(timezone.now())
@@ -211,7 +202,6 @@ def callback(request, politician_slug):
         
         muni_name, dist_name, schedule_text = get_db_schedule_text()
         
-        # Windows特有の文字化けエラーを防ぐため、年月日の作り方を安全な形式に変更
         today_str = f"{today.year}年{today.month:02d}月{today.day:02d}日"
         
         system_prompt = (
@@ -229,10 +219,22 @@ def callback(request, politician_slug):
         try:
             response = client.chat.completions.create(
                 model=politician.ai_model_name,
-                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_text}]
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_text}],
+                max_tokens=300, # 🛡️ トークン数を絞りコストを強制カット
             )
+            
+            # 🛡️ API通信が正常に成功した時のみ、利用回数を1カウント追加する
+            if hasattr(politician, 'llm_quota'):
+                politician.llm_quota.record_usage()
+                
             return response.choices[0].message.content
-        except Exception as e: return f"AIエラー: {str(e)}"
+            
+        except openai.RateLimitError:
+            # 🛡️ OpenAI側（プロジェクト機能等）で予算上限に達してAPIが遮断された場合
+            return "【システム通知】当月のAI自動応答システムのご利用上限（予算設定）に達しました。来月リセットされるまでお待ちください。お急ぎの用件は役員へ直接ご連絡をお願いいたします。"
+        except Exception as e: 
+            print(f"OpenAI API Error for {politician.slug}: {e}")
+            return "現在、AIシステムが混み合っております。しばらく経ってから再度お試しください。"
 
     @handler.add(FollowEvent)
     def handle_follow(event):
@@ -243,13 +245,11 @@ def callback(request, politician_slug):
         )
         member.registration_step = 0
         
-        # 💡【新規追加】友だち追加された瞬間にLINEプロフィールを自動取得！
         try:
             profile = line_bot_api.get_profile(line_user_id)
-            member.line_display_name = profile.display_name # LINEの表示名を保存
-            member.line_picture_url = profile.picture_url   # LINEのアイコン画像を保存
+            member.line_display_name = profile.display_name
+            member.line_picture_url = profile.picture_url  
         except Exception as e:
-            # 万が一、一瞬でブロックされた場合などはエラーを無視して進める
             print(f"プロフィール取得エラー: {e}")
             
         member.save()
@@ -291,12 +291,8 @@ def callback(request, politician_slug):
                 line_bot_api.reply_message(event.reply_token, flex_msg)
                 return
             
-            # ==========================================
-            # ▼▼▼ 新規追加：ポータルサイトへの誘導 ▼▼▼
-            # ==========================================
+            # ポータルサイトへの誘導
             if user_text in ["ホームページ", "ホームページへ移動", "ポータルサイト"]:
-                # 🛡️ 運営側の防衛的視点: URLをハードコードせず、データベースのslugから動的生成
-                # さらに、LINE内ブラウザの不具合を回避する安全パラメータをシステム側で強制付与
                 portal_url = f"https://jichidantai.jp/p/{politician.slug}/?openExternalBrowser=1"
                 
                 reply_text = (
@@ -307,16 +303,13 @@ def callback(request, politician_slug):
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
                 return            
             
-            # ==========================================
-            # ▼▼▼ 新規追加：行事カレンダー（カルーセル表示） ▼▼▼
-            # ==========================================
+            # 行事カレンダー（カルーセル表示）
             if user_text == "行事カレンダー":
                 today = timezone.localtime(timezone.now()).date()
                 
-                # 今日以降のイベントを日付順に「最大3件」取得する
                 upcoming_events = Event.objects.filter(
                     politician=politician,
-                    date__date__gte=today  # models.pyの 'date' 項目で絞り込み
+                    date__date__gte=today 
                 ).order_by('date')[:3]
 
                 if not upcoming_events.exists():
@@ -328,28 +321,21 @@ def callback(request, politician_slug):
 
                 columns = []
                 for ev in upcoming_events:
-                    # ①タイトル処理（LINEの制限：最大40文字）
                     card_title = ev.title[:40] if ev.title else "名称未設定"
 
-                    # ▼▼▼ 修正：②日付のフォーマット（Windowsエラー回避版） ▼▼▼
-                    # （修正前）date_str = timezone.localtime(ev.date).strftime('%m月%d日 %H:%M')
                     local_date = timezone.localtime(ev.date)
                     date_str = f"{local_date.month}月{local_date.day}日 {local_date.strftime('%H:%M')}"
 
-                    # ③テキスト処理（LINEの制限：最大60文字）
-                    # 日付と説明文を合体させ、60文字を超える場合は「...」で省略する安全設計
                     card_desc = ev.description if ev.description else "詳細はタップして確認"
                     text_content = f"📅 {date_str}\n{card_desc}"
                     if len(text_content) > 60:
                         text_content = text_content[:57] + "..."
 
-                    # ④カードを1枚ずつ組み立てる
                     columns.append(
                         CarouselColumn(
                             title=card_title,
                             text=text_content,
                             actions=[
-                                # 将来的に「出欠ボタン」などに変更できるダミーボタン
                                 PostbackAction(
                                     label='確認する',
                                     data=f'action=view_event&event_id={ev.id}'
@@ -358,7 +344,6 @@ def callback(request, politician_slug):
                         )
                     )
 
-                # ⑤カードの束（カルーセル）を作って送信！
                 carousel_message = TemplateSendMessage(
                     alt_text='直近の行事カレンダーが届きました',
                     template=CarouselTemplate(columns=columns)
@@ -547,21 +532,17 @@ def callback(request, politician_slug):
             line_user_id = event.source.user_id
             postback_data = event.postback.data
             
-            # 誰がボタンを押したか特定（自動登録）
             member, _ = AiMember.objects.get_or_create(
                 line_user_id=line_user_id,
                 defaults={'politician': politician}
             )
             
-            # 暗号（"action=emergency&event_id=1&ans=1"）を辞書型に解読する
             data_dict = dict(parse_qsl(postback_data))
             
-            # 防災・アンケートの回答だった場合
             if data_dict.get('action') == 'emergency':
                 event_id = data_dict.get('event_id')
                 ans_num = data_dict.get('ans')
                 
-                # イベントが存在するか、受付中かを確認
                 em_event = EmergencyEvent.objects.filter(id=event_id, politician=politician).first()
                 if not em_event:
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="このアンケートは存在しないか、削除されました。"))
@@ -570,20 +551,17 @@ def callback(request, politician_slug):
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="このアンケートの受付はすでに終了しています。"))
                     return
                 
-                # どのボタンが押されたかを判定
                 answer_text = ""
                 if ans_num == '1': answer_text = em_event.choice_1
                 elif ans_num == '2': answer_text = em_event.choice_2
                 elif ans_num == '3': answer_text = em_event.choice_3
                 
-                # データベースに記録（または上書き）する
                 response_obj, created = EmergencyResponse.objects.update_or_create(
                     event=em_event,
                     ai_member=member,
                     defaults={'answer': answer_text}
                 )
                 
-                # お礼のメッセージを返す
                 reply_msg = f"「{answer_text}」として回答を記録しました。\nご協力ありがとうございます。"
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
 
@@ -591,7 +569,6 @@ def callback(request, politician_slug):
                 event_id = data_dict.get('event_id')
                 ans_num = data_dict.get('ans')
                 
-                # 行政のイベントが存在するか、受付中かを確認
                 city_event = CityEmergencyEvent.objects.filter(id=event_id).first()
                 if not city_event:
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="このアンケートは存在しないか、削除されました。"))
@@ -600,20 +577,17 @@ def callback(request, politician_slug):
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="このアンケートの受付はすでに終了しています。"))
                     return
                 
-                # どのボタンが押されたかを判定
                 answer_text = ""
                 if ans_num == '1': answer_text = city_event.choice_1
                 elif ans_num == '2': answer_text = city_event.choice_2
                 elif ans_num == '3': answer_text = city_event.choice_3
                 
-                # 行政用の集計データベースに記録（または上書き）する
                 CityEmergencyResponse.objects.update_or_create(
                     event=city_event,
                     ai_member=member,
                     defaults={'answer': answer_text}
                 )
                 
-                # 少し丁寧なお礼のメッセージを返す
                 reply_msg = f"「{answer_text}」として回答を記録しました。\n行政からのアンケート・安否確認へのご協力ありがとうございます。"
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
 
@@ -630,30 +604,25 @@ def public_tenant_page(request, slug):
     """自治会ポータルサイトのメインビュー（統合・完成版）"""
     politician = get_object_or_404(Politician, slug=slug)
 
-    # 🛡️ 運営側の防衛的視点: 設定が存在しない、または「非公開」の場合はアクセスを強制遮断
     if not hasattr(politician, 'page_config') or not politician.page_config.is_public:
         raise Http404("このページは現在準備中、または非公開です。")
 
     config = politician.page_config
 
-    # --- 各種データの取得 ---
     library_docs = []
     announcements = []
     upcoming_events = []
 
-    # 1. 資料室（最新5件）
     if config.show_library:
         library_docs = LibraryDocument.objects.filter(
             politician=politician, is_deleted=False, access_level='PUBLIC'
         ).order_by('-fiscal_year', '-created_at')[:5]
 
-    # 2. お知らせ（最新5件）
     if config.show_announcements:
         announcements = Announcement.objects.filter(
             politician=politician, is_active=True
         ).order_by('-created_at')[:5]
 
-    # 3. 行事予定
     if config.show_events:
         now = timezone.now()
         upcoming_events = Event.objects.filter(
@@ -661,12 +630,10 @@ def public_tenant_page(request, slug):
             date__gte=now
         ).order_by('date')[:5]
 
-    # 4. 回覧板・アンケート
     active_surveys = Survey.objects.filter(
         politician=politician, is_active=True
     ).order_by('deadline')
 
-    # 5. 休日当番医
     today = timezone.localtime(timezone.now()).date()
     target_area_ids = config.target_medical_areas.values_list('id', flat=True)
 
@@ -689,7 +656,6 @@ def public_tenant_page(request, slug):
                 'institution__name_kana'
             )
 
-    # 6. おくやみ情報
     target_mun_ids = config.target_condolence_areas.values_list('id', flat=True)
     condolences = []
     if target_mun_ids:
@@ -700,15 +666,10 @@ def public_tenant_page(request, slug):
             Q(funeral_datetime__gte=two_days_ago) | Q(funeral_datetime__isnull=True)
         ).select_related('funeral_hall').order_by('-funeral_datetime')
 
-    # ==========================================
-    # ▼▼▼ 7. ゴミ収集データの取得ロジック ▼▼▼
-    # ==========================================
-    # 当月の初日と末日を計算
     _, last_day = calendar.monthrange(today.year, today.month)
     first_date_of_month = today.replace(day=1)
     last_date_of_month = today.replace(day=last_day)
 
-    # 該当自治会の当月分のゴミ収集データを取得
     monthly_garbages_qs = GarbageCalendar.objects.filter(
         municipality=politician.gomi_municipality,
         district=politician.gomi_district,
@@ -716,26 +677,22 @@ def public_tenant_page(request, slug):
         collection_date__lte=last_date_of_month
     ).order_by('collection_date')
 
-    # 🛡️ データを日付ごとにグループ化し、複数種類をまとめる
     grouped_garbages = {}
     for g in monthly_garbages_qs:
         if g.collection_date not in grouped_garbages:
             grouped_garbages[g.collection_date] = []
         grouped_garbages[g.collection_date].append(g.garbage_type)
 
-    # テンプレートに渡すための整形済みリストを作成
     calendar_data = []
     for d, types in grouped_garbages.items():
         calendar_data.append({
             'date': d,
-            'types_str': '、'.join(types),           # 例: "金属、缶びん" (カレンダー表用)
-            'types_quoted': '「' + '」「'.join(types) + '」' # 例: "「金属」「缶びん」" (トップサマリー用)
+            'types_str': '、'.join(types),
+            'types_quoted': '「' + '」「'.join(types) + '」'
         })
 
-    # 本日のデータを抽出
     today_garbage = next((item for item in calendar_data if item['date'] == today), None)
 
-    # 🎯 コンテキスト（テンプレートへ渡すデータ）を修正
     context = {
         'politician': politician,
         'config': config,
@@ -746,19 +703,15 @@ def public_tenant_page(request, slug):
         'duty_clinics': duty_clinics,
         'today': today,
         'condolences': condolences,
-        # ▼ ゴミカレンダー用の変数を修正 ▼
         'today_garbage': today_garbage,
-        'calendar_data': calendar_data, # 🔴 monthly_garbages から calendar_data に変更
+        'calendar_data': calendar_data, 
     }
     
     return render(request, 'bot/tenant_page.html', context)
 
-# 🛡️ 運営側の防衛的視点: 役員（ログインユーザー）しか見られないように制限をかける
 @login_required
 def minutes_support_page(request):
     """議事録作成サポートキットの案内画面"""
-    
-    # AIに渡すための、行政書士監修の「魔法のプロンプト」を定義
     expert_prompt = """
 あなたは優秀な自治会の書記です。以下の会議録音テキストから、議事録のドラフトを作成してください。
 
@@ -775,4 +728,3 @@ def minutes_support_page(request):
         'expert_prompt': expert_prompt,
     }
     return render(request, 'bot/minutes_support.html', context)
-

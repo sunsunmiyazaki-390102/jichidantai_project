@@ -4,7 +4,7 @@ from import_export.admin import ImportExportModelAdmin
 from import_export.widgets import DateWidget
 from django.utils.html import format_html
 
-from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityAdminProfile, CityEmergencyEvent, CityEmergencyResponse, CityMemberProfile, PublicPageConfig, BroadcastMessage, Municipality, FuneralHall, Condolence
+from .models import Politician, Event, Course, CourseContent, UserProgress, CourseAssignment, MessageLog, GarbageCalendar, EmergencyEvent, EmergencyResponse, CityAdminProfile, CityEmergencyEvent, CityEmergencyResponse, CityMemberProfile, PublicPageConfig, BroadcastMessage, Municipality, FuneralHall, Condolence, TenantLLMQuota
 from linebot import LineBotApi
 from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, PostbackAction
 from linebot.exceptions import LineBotApiError
@@ -764,3 +764,20 @@ class CondolenceAdmin(admin.ModelAdmin):
     list_display = ('deceased_name', 'funeral_hall', 'funeral_datetime')
     list_filter = ('funeral_hall__municipality', 'ceremony_type') # 市町村で絞り込み可能
     search_fields = ('deceased_name', 'deceased_address')
+
+# ==========================================
+# ▼ 新規追加：AI利用枠管理の表示設定
+# ==========================================
+@admin.register(TenantLLMQuota)
+class TenantLLMQuotaAdmin(admin.ModelAdmin):
+    # 一覧画面に表示する項目
+    list_display = ('politician', 'monthly_limit', 'current_month_usage', 'last_reset_date')
+    list_filter = ('politician',)
+    search_fields = ('politician__name',)
+    
+    # 🛡️ 運営側の防衛的視点:
+    # 運用開始後は、役員が誤って利用回数（current_month_usage）を書き換えて
+    # 制限を突破してしまわないよう、読み取り専用（readonly_fields）にするのが安全ですが、
+    # 現在はテスト稼働中のため手動編集を開放しておきます。
+    # readonly_fields = ('current_month_usage', 'last_reset_date')
+    
