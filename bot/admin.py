@@ -61,9 +61,13 @@ class PoliticianAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('基本情報・システム権限', {
-            'fields': ('name', 'slug', 'city_code', 'district_code', 'admin_users') # ← admin_users を追加
+            'fields': ('name', 'slug', 'city_code', 'district_code', 'admin_users')
         }),
-        ('LINE連携設定', {'fields': ('line_channel_secret', 'line_access_token', 'notification_line_id')}),
+        ('LINE連携設定', {
+            # 🛡️ 運営側の防衛的視点: ここに 'tenant_liff_id' を追加。
+            # fieldsetsを定義している場合、明示しないフィールドは強制的に非表示になります。
+            'fields': ('line_channel_secret', 'line_access_token', 'notification_line_id', 'tenant_liff_id')
+        }),
         ('地域設定', {'fields': ('gomi_municipality', 'gomi_district')}),
         ('AI（頭脳）設定', {
             'fields': ('openai_api_key', 'ai_model_name', 'system_prompt', 'openai_assistant_id'),
