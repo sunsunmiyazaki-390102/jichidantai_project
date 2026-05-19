@@ -53,7 +53,7 @@ class CourseContentInline(admin.StackedInline):
 # ==========================================
 @admin.register(Politician)
 class PoliticianAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'city_code', 'district_code', 'gomi_municipality', 'gomi_district', 'has_api_key')
+    list_display = ('name', 'slug', 'city_code', 'district_code', 'gomi_municipality', 'gomi_district', 'has_api_key', 'tenant_liff_id')
     inlines = [CourseAssignmentInline]
     
     # 【防衛的仕様】誤操作による権限削除を防ぐための左右分割UI

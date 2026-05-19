@@ -63,6 +63,12 @@ class Politician(models.Model):
         help_text="予約申請などの通知を受け取る役員のLINE User ID（U...）またはグループID（C...）"
     )
 
+    # 🛡️ 運営側の防衛的視点: テナント完全独立運用に向けたLIFF IDの動的保持
+    tenant_liff_id = models.CharField(
+        "テナント専用 LIFF ID", max_length=100, blank=True, null=True,
+        help_text="各団体が独自に取得したLIFF IDを入力してください。（空欄の場合は従来の共通LIFF IDが適用されます）"
+    )    
+
 # ==========================================
 # ▼ 新規追加：テナント毎のLLM利用上限管理
 # ==========================================

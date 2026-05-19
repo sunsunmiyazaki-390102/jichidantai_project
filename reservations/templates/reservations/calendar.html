@@ -44,7 +44,6 @@
         .alert-success { color: #22543d; background-color: #c6f6d5; border: 1px solid #9ae6b4; }
         .alert-error { color: #822727; background-color: #fed7d7; border: 1px solid #feb2b2; }
 
-
         /* 🛡️ スマホ向けFullCalendar調整（レイアウト崩れ防止と防衛的UI） */
         @media (max-width: 600px) {
             /* 1. タイトルがボタンに被るのを防ぐため、ツールバーを縦並びに配置 */
@@ -151,7 +150,10 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // --- LIFF初期化 & 表示切り替え ---
-            liff.init({ liffId: "2010022699-1NyjK3qU" })
+            // 🛡️ 運営側の防衛的視点: データベースから動的にLIFF IDを読み込む
+            const liffId = "{{ politician.tenant_liff_id|default:'2010022699-1NyjK3qU' }}";
+
+            liff.init({ liffId: liffId })
                 .then(() => {
                     // LINE内ブラウザ、または外部ブラウザでLINEログイン済みかチェック
                     if (liff.isInClient() || liff.isLoggedIn()) {
